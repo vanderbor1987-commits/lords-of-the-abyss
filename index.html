@@ -14,10 +14,11 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700;800;900&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css?v=9.2">
-    <!-- MAJOR-M8: внешние SDK платформ грузятся с явным CORS-запросом,
-         чтобы исключить блокировки и корректно работать с Service Worker cache -->
+        <!-- MAJOR-M8: VK Bridge грузится статически (не вызывает ошибок в standalone).
+         Yandex Games SDK подгружается ДИНАМИЧЕСКИ из engine.js — только когда игра
+         запущена внутри реального iframe портала Яндекс.Игр. Это устраняет спам
+         "No parent to post message" в консоли сторонних браузеров и ускоряет загрузку. -->
     <script src="https://unpkg.com/@vkontakte/vk-bridge/dist/browser.min.js" crossorigin="anonymous"></script>
-    <script src="https://yandex.ru/games/sdk/v2" crossorigin="anonymous"></script>
 </head>
 <body>
 
