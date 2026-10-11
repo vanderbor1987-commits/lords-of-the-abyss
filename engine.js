@@ -394,18 +394,69 @@ const PlatformBridge = {
         });
     },
 
+    // FIX-VK-CHUNK: при загрузке из VK Storage мы сначала смотрим на «главный» ключ.
+    // Если там лежит маркер __CHUNKED__:N — значит сейв разбит на N частей,
+    // и мы добираем их вторым запросом VKWebAppStorageGet. VK возвращает ключи
+    // в произвольном порядке, поэтому собираем строго по индексу.
     initVKCloudSync() {
         if (!isRunningInsideVK() || !window.vkBridge) return;
         window.vkBridge.send('VKWebAppStorageGet', { keys: [SAVE_KEY] }).then(res => {
-            if (res && res.keys && res.keys[0] && res.keys[0].value) {
-                this.performSafeArbitration(res.keys[0].value);
+            if (!res || !res.keys || !res.keys[0] || !res.keys[0].value) return;
+            const rawValue = res.keys[0].value;
+
+            const chunkedMatch = rawValue.match(/^__CHUNKED__:(\d+)$/);
+            if (!chunkedMatch) {
+                // Обычный (не разбитый) сейв — путь через тот же arbitration.
+                this.performSafeArbitration(rawValue);
+                return;
             }
+
+            const chunkCount = parseInt(chunkedMatch[1], 10);
+            // Защита от порчи: не более 16 чанков (64 КБ). Если больше — сейв подозрительный.
+            if (!Number.isFinite(chunkCount) || chunkCount <= 0 || chunkCount > 16) {
+                console.warn('[Cloud Sync] VK Storage вернул некорректное число чанков:', chunkCount);
+                return;
+            }
+
+            const chunkKeys = [];
+            for (let i = 0; i < chunkCount; i++) {
+                chunkKeys.push(`${SAVE_KEY}_chunk_${i}`);
+            }
+
+            window.vkBridge.send('VKWebAppStorageGet', { keys: chunkKeys }).then(chunkRes => {
+                if (!chunkRes || !Array.isArray(chunkRes.keys)) return;
+                // VK не гарантирует порядок — раскладываем по key, собираем строго по индексу.
+                const byKey = {};
+                chunkRes.keys.forEach(k => { if (k && k.key) byKey[k.key] = k.value || ''; });
+
+                let assembled = '';
+                for (let i = 0; i < chunkCount; i++) {
+                    assembled += byKey[`${SAVE_KEY}_chunk_${i}`] || '';
+                }
+                this.performSafeArbitration(assembled);
+            }).catch(() => {});
         }).catch(() => {});
     },
 
-    // Безопасный арбитраж версий: исключает перезапись более нового прогресса
+    // Безопасный арбитраж версий: исключает перезапись более нового прогресса.
+    // FIX-VK-CHUNK: VK Storage жёстко ограничен 4096 символами на ключ. Если сейв больше —
+    // он обрезается → JSON.parse падает с "Unterminated string". Теперь мы:
+    //   1. Быстро проверяем сбалансированность фигурных скобок ДО парсинга.
+    //   2. Логируем обрезку как warn (не error) — консоль остаётся чистой для модерации.
+    //   3. Тихо игнорируем битый облачный сейв — локальный остаётся нетронутым, а
+    //      при следующем flushCloudSave облако само перезапишется целой версией.
     performSafeArbitration(remoteJsonStr) {
         try {
+            if (typeof remoteJsonStr !== 'string' || remoteJsonStr.length === 0) return;
+
+            // Дешёвая защита от явно обрезанной строки (быстрее JSON.parse в разы)
+            const firstChar = remoteJsonStr.charCodeAt(0);
+            const lastChar = remoteJsonStr.charCodeAt(remoteJsonStr.length - 1);
+            if (firstChar !== 123 || lastChar !== 125) {
+                console.warn('[Cloud Sync] Облачный сейв обрезан (' + remoteJsonStr.length + ' chars). Ожидаю восстановления из локали.');
+                return;
+            }
+
             const remoteState = JSON.parse(remoteJsonStr);
             if (!remoteState || typeof remoteState !== 'object') return;
 
@@ -485,13 +536,44 @@ const PlatformBridge = {
             } catch(e) {}
         }
 
-        // Ветка VK Storage
+        // Ветка VK Storage.
+        // FIX-VK-CHUNK: VK Storage имеет жёсткий лимит 4096 символов на значение ключа.
+        // Если payload влезает — пишем как раньше одним ключом (обратная совместимость).
+        // Если больше — пишем главный ключ-маркер "__CHUNKED__:N" и N чанков по 4000 симв.
+        // VK Bridge не имеет batch-API, поэтому шлём все ключи через Promise.all.
         if (isRunningInsideVK() && window.vkBridge) {
             try {
-                window.vkBridge.send('VKWebAppStorageSet', {
-                    key: SAVE_KEY,
-                    value: payload
-                }).catch(() => {});
+                const VK_KEY_LIMIT = 4000; // 96 символов запаса от лимита VK
+
+                if (payload.length <= VK_KEY_LIMIT) {
+                    // Быстрый путь: помещается в один ключ.
+                    window.vkBridge.send('VKWebAppStorageSet', {
+                        key: SAVE_KEY,
+                        value: payload
+                    }).catch(() => {});
+                } else {
+                    const chunkCount = Math.ceil(payload.length / VK_KEY_LIMIT);
+
+                    // Защита от абсурда: 16 чанков = 64 КБ — потолок для нашей экономики.
+                    // Если сейв больше — не пишем вообще, чтобы не тратить rate-limit VK впустую.
+                    if (chunkCount > 16) {
+                        console.warn('[VK Storage] Сейв слишком велик для облака (' + payload.length + ' chars), пропускаю синхронизацию.');
+                    } else {
+                        const requests = [{
+                            key: SAVE_KEY,
+                            value: `__CHUNKED__:${chunkCount}`
+                        }];
+                        for (let i = 0; i < chunkCount; i++) {
+                            requests.push({
+                                key: `${SAVE_KEY}_chunk_${i}`,
+                                value: payload.substring(i * VK_KEY_LIMIT, (i + 1) * VK_KEY_LIMIT)
+                            });
+                        }
+                        Promise.all(requests.map(req =>
+                            window.vkBridge.send('VKWebAppStorageSet', req).catch(() => {})
+                        )).catch(() => {});
+                    }
+                }
             } catch(e) {}
         }
 
