@@ -188,6 +188,8 @@ const PlatformBridge = {
     lastCloudSaveTime: 0,
     canShowYandexShortcut: false,
     isLoadingReadyCalled: false,
+    // Кэш промиса динамической загрузки Yandex SDK v2 (защита от двойной инжекции)
+    _yandexSdkPromise: null,
 
     init() {
         if (isRunningInsideVK() && window.vkBridge) {
@@ -195,12 +197,18 @@ const PlatformBridge = {
             this.initVKCloudSync();
         }
 
-        // Инициализируем Яндекс SDK только в реальной среде Яндекса
-        if (isRunningInsideYandex() && typeof window.YaGames !== 'undefined') {
-            window.YaGames.init().then(ysdk => {
+        // Yandex Games SDK подгружается ДИНАМИЧЕСКИ и ТОЛЬКО внутри реального портала Яндекс.Игр.
+        // В обычном браузере (GitHub Pages, localhost) скрипт вообще не инжектится — это
+        // устраняет спам "No parent to post message" в консоли и экономит ~200-400 мс загрузки.
+        if (isRunningInsideYandex()) {
+            this.loadYandexSdk().then(() => {
+                if (typeof window.YaGames === 'undefined') return null;
+                return window.YaGames.init();
+            }).then(ysdk => {
+                if (!ysdk) return;
                 this.ysdkInstance = ysdk;
                 window.ysdk = ysdk;
-                
+
                 // Инициализация платежей
                 ysdk.getPayments({ signed: true }).then(payments => {
                     this.yandexPayments = payments;
@@ -220,8 +228,27 @@ const PlatformBridge = {
                 if (this.isLoadingReadyCalled) {
                     this.notifyLoadingReady();
                 }
-            }).catch(() => {});
+            }).catch(err => {
+                console.warn('[PlatformBridge] Yandex SDK init failed:', err);
+            });
         }
+    },
+
+    // Однократная динамическая загрузка Yandex Games SDK v2.
+    // Возвращает Promise, резолвящийся после onload скрипта или немедленно, если SDK уже загружен.
+    loadYandexSdk() {
+        if (typeof window !== 'undefined' && window.YaGames) return Promise.resolve();
+        if (this._yandexSdkPromise) return this._yandexSdkPromise;
+        this._yandexSdkPromise = new Promise((resolve, reject) => {
+            const script = document.createElement('script');
+            script.src = 'https://yandex.ru/games/sdk/v2';
+            script.async = true;
+            script.crossOrigin = 'anonymous';
+            script.onload = () => resolve();
+            script.onerror = () => reject(new Error('Yandex SDK failed to load'));
+            document.head.appendChild(script);
+        });
+        return this._yandexSdkPromise;
     },
 
     // T-E (Major): догоняющая выдача зависших покупок Yandex.
