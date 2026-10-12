@@ -93,8 +93,8 @@ const LEGAL_DOCS = {
                     heading: '9. Контакты',
                     paragraphs: ['По всем вопросам, связанным с Игрой, Пользователь может обратиться к Разработчику:'],
                     list: [
-                        'Официальное сообщество игры: vk.ru/lordsabyss',
-                        'Служба поддержки пользователей: vk.me/lordsabyss'
+                        'Официальное сообщество игры: {{vk.ru/lordsabyss}}',
+                        'Служба поддержки пользователей: {{vk.me/lordsabyss}}'
                     ],
                     trailingParagraphs: ['Срок ответа на обращение — не позднее 7 календарных дней с момента отправки.']
                 }
@@ -174,8 +174,8 @@ const LEGAL_DOCS = {
                     heading: '9. Contacts',
                     paragraphs: ['For any questions related to the Game, the User may contact the Developer:'],
                     list: [
-                        'Official community: vk.ru/lordsabyss',
-                        'User support: vk.me/lordsabyss'
+                        'Official community: {{vk.ru/lordsabyss}}',
+                        'User support: {{vk.me/lordsabyss}}'
                     ],
                     trailingParagraphs: ['Response time — no later than 7 calendar days from the moment of sending.']
                 }
@@ -269,8 +269,8 @@ const LEGAL_DOCS = {
                     heading: '10. Контакты',
                     paragraphs: ['По вопросам обработки данных Пользователь может обратиться к Разработчику:'],
                     list: [
-                        'Официальное сообщество игры: vk.ru/lordsabyss',
-                        'Служба поддержки пользователей: vk.me/lordsabyss'
+                        'Официальное сообщество игры: {{vk.ru/lordsabyss}}',
+                        'Служба поддержки пользователей: {{vk.me/lordsabyss}}'
                     ],
                     trailingParagraphs: ['Срок ответа — не позднее 7 календарных дней с момента обращения.']
                 }
@@ -358,8 +358,8 @@ const LEGAL_DOCS = {
                     heading: '10. Contacts',
                     paragraphs: ['For questions regarding data processing, the User may contact the Developer:'],
                     list: [
-                        'Official community: vk.ru/lordsabyss',
-                        'User support: vk.me/lordsabyss'
+                        'Official community: {{vk.ru/lordsabyss}}',
+                        'User support: {{vk.me/lordsabyss}}'
                     ],
                     trailingParagraphs: ['Response time — no later than 7 calendar days from the moment of contacting.']
                 }

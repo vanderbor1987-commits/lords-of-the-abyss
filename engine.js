@@ -846,55 +846,91 @@ function showPlatformRewarded(onSuccess, onError) {
     PlatformBridge.showRewarded(onSuccess, onError);
 }
 
-// P8-fix: правовые документы открываются ВСТРОЕННО в модальном окне внутри игрового iframe.
-// Причина: VKWebAppOpenURL открывает внешний документ в отдельном окне браузера, и клик
-// «Вернуться в игру» создаёт ДУБЛЬ игровой сессии — игрок физически покидает iframe и
-// возвращается уже в новую копию приложения. Встроенная модалка полностью устраняет эту
-// проблему: игрок читает документ, не покидая игровую сцену.
-//
-// Внешние файлы terms.html / privacy.html остаются в репозитории для VK Console
-// (поля «Правовые документы»), но из игры на них больше не ссылаемся.
+// P8-ARCH: белый список доменов, которые разрешено превращать в кликабельные ссылки.
+// Защита от инъекции javascript: через подмену текста в LEGAL_DOCS.
+const LEGAL_LINK_WHITELIST = /^(https?:\/\/)?(vk\.com|vk\.ru|vk\.me)\//i;
+
+// P8-ARCH: парсер токенов {{url}} внутри юридических текстов.
+//   • Валидный URL из белого списка → <a data-legal-url="..."> с обработчиком
+//   • Всё остальное (включая vk.com/app54817477) → обычный текст
+// Обработчик вешается ПОСЛЕ вставки в DOM через addEventListener — без inline onclick,
+// чтобы не рисковать с двойным экранированием кавычек в атрибуте.
+function renderLegalText(rawText) {
+    if (rawText === null || rawText === undefined) return '';
+    const parts = String(rawText).split(/(\{\{[^}]+\}\})/g);
+    return parts.map(part => {
+        const match = part.match(/^\{\{(.+?)\}\}$/);
+        if (match) {
+            const url = match[1].trim();
+            if (LEGAL_LINK_WHITELIST.test(url)) {
+                const fullUrl = url.startsWith('http') ? url : `https://${url}`;
+                return `<a class="legal-doc-link" href="#" data-legal-url="${escapeHtml(fullUrl)}">${escapeHtml(url)}</a>`;
+            }
+            return escapeHtml(url);
+        }
+        return escapeHtml(part);
+    }).join('');
+}
+
+// P8-ARCH: юридические документы рендерятся ВНУТРИ игрового iframe модалкой #legal-doc-modal.
+// Это устраняет проблему дублирования VK-сессии при клике «Соглашение» из карточки приложения:
+// VKWebAppOpenURL открывает документ в новом окне WebView, и любой возврат из него создаёт
+// параллельную игровую сессию. Внутренняя модалка физически не покидает iframe.
+// Внешние terms.html / privacy.html остаются в репозитории как публичная копия для VK Console.
 function openLegalDocument(docKey) {
-    const doc = LEGAL_DOCS?.[docKey]?.[currentLang];
-    if (!doc) return;
-    const modal = document.getElementById('legal-doc-modal');
+    if (typeof LEGAL_DOCS === 'undefined' || !LEGAL_DOCS[docKey]) return;
+    const doc = LEGAL_DOCS[docKey];
+    const lang = (currentLang === 'EN') ? 'EN' : 'RU';
+    const data = doc[lang] || doc.RU;
+    if (!data) return;
+
     const titleEl = document.getElementById('legal-doc-title');
     const updatedEl = document.getElementById('legal-doc-updated');
     const bodyEl = document.getElementById('legal-doc-body');
-    if (!modal || !bodyEl) return;
+    const btnClose = document.getElementById('btn-legal-doc-close');
+    if (!titleEl || !bodyEl) return;
 
-    if (titleEl) titleEl.innerText = doc.title || '';
-    if (updatedEl) updatedEl.innerText = doc.updated || '';
+    titleEl.innerText = data.title || '';
+    if (updatedEl) updatedEl.innerText = data.updated || '';
 
-    // Секции рендерятся в фиксированном порядке: heading → paragraphs → list → trailingParagraphs.
-    // Весь текст прогоняется через escapeHtml — защита от XSS, даже если юр. текст когда-нибудь
-    // будет подтягиваться из внешнего источника (сейчас он статичен в data-legal.js).
+    // Кнопка «Закрыть» управляется вручную (без data-i18n), чтобы обновляться и при смене языка открытой модалки
+    if (btnClose) {
+        btnClose.innerText = (I18N[currentLang] && I18N[currentLang].modal_close)
+            ? I18N[currentLang].modal_close
+            : (currentLang === 'RU' ? 'ЗАКРЫТЬ' : 'CLOSE');
+    }
+
     let html = '';
-    (doc.sections || []).forEach(sec => {
-        if (sec.heading) {
-            html += `<h4 class="legal-doc-heading">${escapeHtml(sec.heading)}</h4>`;
-        }
+    (data.sections || []).forEach(sec => {
+        if (sec.heading) html += `<h4 class="legal-doc-heading">${escapeHtml(sec.heading)}</h4>`;
         (sec.paragraphs || []).forEach(p => {
-            html += `<p class="legal-doc-paragraph">${escapeHtml(p)}</p>`;
+            html += `<p class="legal-doc-paragraph">${renderLegalText(p)}</p>`;
         });
-        if (Array.isArray(sec.list) && sec.list.length > 0) {
-            html += '<ul class="legal-doc-list">';
-            sec.list.forEach(li => {
-                html += `<li>${escapeHtml(li)}</li>`;
-            });
-            html += '</ul>';
+        if (Array.isArray(sec.list) && sec.list.length) {
+            html += '<ul class="legal-doc-list">' + sec.list.map(item => `<li>${renderLegalText(item)}</li>`).join('') + '</ul>';
         }
         (sec.trailingParagraphs || []).forEach(p => {
-            html += `<p class="legal-doc-paragraph">${escapeHtml(p)}</p>`;
+            html += `<p class="legal-doc-paragraph">${renderLegalText(p)}</p>`;
         });
     });
+
     bodyEl.innerHTML = html;
     bodyEl.scrollTop = 0;
 
-    // Запоминаем текущий ключ — пригодится при переключении языка, чтобы перерисовать ту же модалку
-    modal.setAttribute('data-active-doc', docKey);
-    modal.style.display = 'flex';
-    playSfx(400, 'sine', 0.05);
+    // Вешаем обработчики на ссылки после вставки в DOM — надёжнее inline onclick с экранированием
+    bodyEl.querySelectorAll('[data-legal-url]').forEach(a => {
+        a.addEventListener('click', (e) => {
+            e.preventDefault();
+            PlatformBridge.openExternalUrl(a.getAttribute('data-legal-url'));
+        });
+    });
+
+    const m = document.getElementById('legal-doc-modal');
+    if (m) {
+        m.setAttribute('data-doc-key', docKey);
+        m.style.display = 'flex';
+    }
+    playSfx(420, 'sine', 0.05);
 }
 
 function closeLegalDocModal() {
