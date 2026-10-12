@@ -27,8 +27,8 @@ const SAVE_KEY = 'lords_core_v31_rebalance';
 // применился ли свежий build из GitHub во встроенном VK-браузере.
 // Формат: BUILD_VERSION — мажорная.минорная (совпадает с бампом sw.js CACHE_NAME),
 //         BUILD_DATE    — ISO-дата сборки.
-const BUILD_VERSION = '4.1';
-const BUILD_DATE = '12.10.2026';
+const BUILD_VERSION = '4.2';
+const BUILD_DATE = '13.10.2026';
 
 // ==========================================================
 // P9: VK LAUNCH PARAMS VALIDATION (п. 1.2.2 правил VK Mini Apps)
