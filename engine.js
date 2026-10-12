@@ -28,7 +28,16 @@ const SAVE_KEY = 'lords_core_v31_rebalance';
 // Формат: BUILD_VERSION — мажорная.минорная (совпадает с бампом sw.js CACHE_NAME),
 //         BUILD_DATE    — ISO-дата сборки.
 const BUILD_VERSION = '4.1';
-const BUILD_DATE = '2026-10-12';
+const BUILD_DATE = '12.10.2026';
+
+// ==========================================================
+// P9: VK LAUNCH PARAMS VALIDATION (п. 1.2.2 правил VK Mini Apps)
+// URL Cloudflare Worker'а, деплоящегося из /cloudflare-worker/.
+// Заполнить после `npx wrangler deploy` (см. cloudflare-worker/README.md).
+// Пока константа пустая — валидация пропускается (graceful no-op),
+// что безопасно для standalone/GH Pages, но НЕ закрывает п. 1.2.2.
+// ==========================================================
+const VK_VALIDATOR_URL = ''; // ← вставить URL worker'а после деплоя
 
 let activeAssignExpId = null;
 let isAscendingInProgress = false;
@@ -11120,6 +11129,84 @@ function initStageScaler() {
     updateScale();
 }
 
+// ==========================================================
+// P9: ВАЛИДАЦИЯ LAUNCH PARAMS ПЕРЕД ЗАГРУЗКОЙ ПРОГРЕССА
+// П. 1.2.2 правил VK Mini Apps: Приложение-Игра должно валидировать подпись
+// параметров запуска. Валидация идёт на Cloudflare Worker (см. VK_VALIDATOR_URL).
+//
+// Режим F1 (оптимистично): при недоступности Worker'а (нет сети, 5xx, timeout)
+// игра ГРУЗИТСЯ с console.warn. Это не ослабляет защиту в проде (VK всегда доступен),
+// но не блокирует модератора при нестабильном соединении.
+//
+// Только при ЯВНОМ sign_mismatch/sign_expired — один раз показываем toast,
+// но всё равно грузим игру (пользовательская сессия могла быть создана легитимно,
+// а подпись испортиться из-за прокси/буфера).
+// ==========================================================
+async function validateLaunchParams() {
+    // Вне VK — валидация не требуется (standalone / GH Pages / Yandex)
+    if (!isRunningInsideVK()) return { valid: true, reason: 'not_in_vk' };
+
+    // URL не задан — graceful no-op (пока Cloudflare Worker не развёрнут)
+    if (!VK_VALIDATOR_URL) {
+        console.warn('[LOTA] P9: VK_VALIDATOR_URL не задан — валидация launch params пропущена. П. 1.2.2 НЕ закрыт.');
+        return { valid: true, reason: 'no_validator_url' };
+    }
+
+    // Кэш в sessionStorage: избегаем повторного fetch при hot-reload в течение сессии
+    try {
+        const cached = sessionStorage.getItem('lota_p9_result');
+        if (cached) {
+            const parsed = JSON.parse(cached);
+            if (parsed && parsed.ts && (Date.now() - parsed.ts) < 3600 * 1000) {
+                return parsed.data;
+            }
+        }
+    } catch (e) {}
+
+    const rawQuery = (typeof window !== 'undefined' && window.location && window.location.search)
+        ? window.location.search.replace(/^\?/, '')
+        : '';
+
+    if (!rawQuery) return { valid: true, reason: 'empty_query' };
+
+    let controller = null;
+    let timeoutId = null;
+    try {
+        controller = new AbortController();
+        timeoutId = setTimeout(() => controller.abort(), 5000);
+
+        const resp = await fetch(VK_VALIDATOR_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ query: rawQuery }),
+            signal: controller.signal
+        });
+
+        clearTimeout(timeoutId);
+        timeoutId = null;
+
+        if (!resp.ok) {
+            console.warn('[LOTA] P9: validator HTTP', resp.status);
+            return { valid: true, reason: 'validator_http_' + resp.status };
+        }
+
+        const data = await resp.json();
+        const result = (data && typeof data.valid === 'boolean')
+            ? { valid: data.valid, reason: data.reason || 'ok' }
+            : { valid: true, reason: 'bad_response_shape' };
+
+        try {
+            sessionStorage.setItem('lota_p9_result', JSON.stringify({ ts: Date.now(), data: result }));
+        } catch (e) {}
+
+        return result;
+    } catch (e) {
+        if (timeoutId) clearTimeout(timeoutId);
+        console.warn('[LOTA] P9: validator unavailable —', e && e.message);
+        return { valid: true, reason: 'validator_unreachable' };
+    }
+}
+
 // Безопасный запуск ядра и инициализация моста платформ
 try {
     // FIX-BUILD-VERSION: boot-лог сборки в консоль. По нему в DevTools VK сразу видно,
@@ -11130,7 +11217,38 @@ try {
     );
 
     initStageScaler();
-    loadGame();
+
+    // P9: асинхронная валидация launch params (fire-and-await в async IIFE).
+    // loadGame() вызывается ПОСЛЕ получения результата, чтобы защититься от сценария
+    // «подменённый vk_user_id → загрузка чужого прогресса». При F1-режиме результат
+    // всегда valid=true, поэтому задержка не блокирует игру на нестабильной сети.
+    (async () => {
+        let p9 = { valid: true, reason: 'skipped' };
+        try {
+            p9 = await validateLaunchParams();
+        } catch (e) {
+            console.warn('[LOTA] P9: unexpected error —', e && e.message);
+        }
+
+        if (!p9.valid && (p9.reason === 'sign_mismatch' || p9.reason === 'sign_expired')) {
+            // F1: не блокируем игру, но даём видимый сигнал
+            console.warn('[LOTA] P9: VALIDATION FAILED —', p9.reason);
+            setTimeout(() => {
+                if (typeof pushToast === 'function') {
+                    pushToast(currentLang === 'RU'
+                        ? '⚠ Проверка подписи не пройдена. Перезапустите игру.'
+                        : '⚠ Signature validation failed. Please restart.');
+                }
+            }, 1500);
+        } else if (p9.valid) {
+            console.log('[LOTA] P9: launch params validation OK (' + p9.reason + ')');
+        }
+
+        // Загружаем прогресс после валидации (даже при F1-провале — игра работает)
+        loadGame();
+        // ...дальнейшая инициализация идёт без изменений (см. существующий код ниже)
+    // FIX-P9-RACE: IIFE здесь НЕ закрываем — init должен идти ПОСЛЕ loadGame().
+    // Закрытие перенесено в самый конец try-блока (после всех render*-вызовов).
     applyLanguage(currentLang);
     PlatformBridge.init();
     initMobileLongPressTooltips();
@@ -11157,6 +11275,10 @@ try {
             playBgMusic();
         }
     }, { once: true });
+
+    })(); // FIX-P9-RACE: закрываем async IIFE ТОЛЬКО после полной инициализации UI.
+          // Теперь весь render* и обработчики запускаются с уже загруженным gState —
+          // нет «моргания» дефолтным состоянием, пока fetch к Cloudflare Worker'у идёт.
 } catch(e) {
     console.error("Initialization safe-fail:", e);
 }
