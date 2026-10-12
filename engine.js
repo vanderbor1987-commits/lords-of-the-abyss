@@ -22,6 +22,31 @@ const defaultPlatformLang = (isVkContext || vkLangParam === 'ru') ? 'RU' : detec
 let currentLang = savedLangKey || defaultPlatformLang;
 const SAVE_KEY = 'lords_core_v31_rebalance';
 
+// FIX-DEV-MODE: единый флаг «мы в режиме разработки / QA».
+// Управляет доступностью console-команд (skipFtue, testAscensionRitual, testArena*).
+//
+// ПРОД (VK / GH Pages) — false. DevTools-команды недоступны, читеры не могут
+// вызвать testAscensionRitual() и дюпать Реликвии.
+// ЛОКАЛКА (live server) — true. QA-удобства работают как раньше.
+// QA НА ТЕЛЕФОНЕ — открыть GH Pages с ?debug=1 в URL.
+//
+// ВАЖНО: этот флаг НЕ защищает от серверных читов (у нас Zero-Server — их и нет).
+// Он защищает от «скрипт-кидди с F12» — самой массовой категории абузеров.
+const IS_DEV_MODE = (() => {
+    try {
+        if (typeof window === 'undefined') return false;
+        const host = (window.location && window.location.hostname) || '';
+        const search = (window.location && window.location.search) || '';
+        // Localhost-разработка: полный доступ к dev-командам
+        if (host === 'localhost' || host === '127.0.0.1' || host === '0.0.0.0') return true;
+        // QA-параметр: ?debug=1 в URL — работает на любом хосте (GH Pages, тест на телефоне)
+        if (new URLSearchParams(search).get('debug') === '1') return true;
+        return false;
+    } catch (e) {
+        return false;
+    }
+})();
+
 // FIX-BUILD-VERSION: единый источник правды о версии сборки.
 // Обновляй эту пару при каждом релизном патче — по дате в UI сразу видно,
 // применился ли свежий build из GitHub во встроенном VK-браузере.
@@ -1219,14 +1244,17 @@ function loadGame() {
     // MAJOR-M2: актуализируем guard ДО дневных проверок (может заморозить сбросы при откате часов)
     applyClockRollbackGuard();
 
-    // DEV/QA: URL-параметр ?skipftue=1 пропускает обучение.
-    // Удобно для быстрого тестирования после hard reset: не нужно каждый раз лезть в консоль.
-    try {
-        const _params = new URLSearchParams(window.location.search || '');
-        if (_params.get('skipftue') === '1') {
-            skipFtue(true);
-        }
-    } catch (e) {}
+    // FIX-DEV-MODE: URL-параметр ?skipftue=1 пропускает обучение ТОЛЬКО в dev-режиме.
+    // В проде (VK / GH Pages без ?debug=1) — параметр игнорируется, игрок не может
+    // пропустить обучение через подмену URL.
+    if (IS_DEV_MODE) {
+        try {
+            const _params = new URLSearchParams(window.location.search || '');
+            if (_params.get('skipftue') === '1') {
+                skipFtue(true);
+            }
+        } catch (e) {}
+    }
 
     // MAJOR-M1: если Колесо было запущено, но приз не начислен (закрытие вкладки в момент анимации) —
     // начисляем его сейчас. Идемпотентно: pendingWheelPrize обнуляется сразу после вызова.
@@ -1459,12 +1487,19 @@ function resetFtue(silent = false) {
     if (!silent) pushToast('FTUE RESET');
 }
 
-// FIX-SKIPFTUE-RECURSION: убраны перезаписи window.skipFtue / window.resetFtue.
-// Проблема: skipFtue/resetFtue объявлены как function declarations — они УЖЕ доступны
-// как window.skipFtue / window.resetFtue автоматически. Строка `window.skipFtue = () => skipFtue(false)`
-// перезаписывала саму функцию стрелкой, которая внутри вызывала саму себя →
-// RangeError: Maximum call stack size exceeded (стек 15000+ кадров) при вызове из консоли.
-// Теперь skipFtue() / resetFtue() из консоли работают напрямую, silent=false по умолчанию (покажут toast).
+// FIX-DEV-MODE: skipFtue / resetFtue больше НЕ доступны как window.*-команды в проде.
+// Их не видно в DevTools на VK, GH Pages без ?debug=1 и на мобильных.
+// Внутри игры как обычные function declarations они продолжают работать —
+// используются в checkDailyReset, ?skipftue=1 (под IS_DEV_MODE) и тестах.
+//
+// FIX-SKIPFTUE-RECURSION (сохранён): раннее window.skipFtue = () => skipFtue(false)
+// перезаписывало функцию стрелкой с рекурсией — стек 15000+ кадров. Эту строку
+// в своё время убрали, теперь не возвращаем — только явный гейт по IS_DEV_MODE.
+if (IS_DEV_MODE) {
+    window.skipFtue = () => skipFtue(false);
+    window.resetFtue = () => resetFtue(false);
+    console.log('[LOTA] DEV MODE: skipFtue() / resetFtue() / testAscensionRitual() / testArenaPromote() / testArenaDemote() доступны.');
+}
 
 // Автоматический навигатор между вкладками игры
 function resolveFtueViewTarget(targetViewId, activeViewId) {
@@ -9271,12 +9306,22 @@ function confirmAscension() {
 }
 
 function playCosmicAscensionAudio() {
+    // FIX-ASCEND-MUTE: ритуал Возвышения играл в полную громкость, игнорируя mute
+    // и ползунок SFX. Все остальные звуки (playSfx/playCoinSfx/playTriumphFanfare)
+    // имеют этот guard, а playCosmicAscensionAudio — нет, потому что это единственная
+    // функция, работающая напрямую через Web Audio API без обёртки playSfx.
+    // Двойная защита: ранний return + масштабирование gain на gState.sfxVolume.
+    if (gState.isAudioMuted || (gState.sfxVolume || 0) <= 0) return;
+
     try {
         const ctx = getAudioContext();
         if (!ctx) return;
         if (ctx.state === 'suspended') ctx.resume();
 
         const curT = ctx.currentTime;
+        // FIX-ASCEND-MUTE: базовый множитель громкости — 0..1 из настроек игрока.
+        // Раньше gain был хардкод 0.38 / 0.22, теперь это пиковые значения при volume=1.
+        const volMult = Math.max(0, Math.min(1, gState.sfxVolume !== undefined ? gState.sfxVolume : 0.8));
 
         // 1. Мощный инфернальный саб-бас (спад частоты 260 -> 45 Hz)
         const subOsc = ctx.createOscillator();
@@ -9287,8 +9332,9 @@ function playCosmicAscensionAudio() {
         subOsc.frequency.setValueAtTime(260, curT);
         subOsc.frequency.exponentialRampToValueAtTime(45, curT + 0.6);
 
+        const subPeak = 0.38 * volMult;
         subGain.gain.setValueAtTime(0.001, curT);
-        subGain.gain.linearRampToValueAtTime(0.38, curT + 0.05);
+        subGain.gain.linearRampToValueAtTime(subPeak, curT + 0.05);
         subGain.gain.exponentialRampToValueAtTime(0.001, curT + 0.7);
 
         subOsc.start(curT);
@@ -9296,6 +9342,7 @@ function playCosmicAscensionAudio() {
 
         // 2. Сияющий мажорный аккорд Сверхновой на 400 мс (C5 - E5 - G5 - C6)
         const chordNotes = [523.25, 659.25, 783.99, 1046.50];
+        const chordPeak = 0.22 * volMult;
         chordNotes.forEach((freq, idx) => {
             const noteOsc = ctx.createOscillator();
             const noteGain = ctx.createGain();
@@ -9307,7 +9354,7 @@ function playCosmicAscensionAudio() {
             noteOsc.frequency.setValueAtTime(freq, startT);
 
             noteGain.gain.setValueAtTime(0.0001, startT);
-            noteGain.gain.linearRampToValueAtTime(0.22, startT + 0.04);
+            noteGain.gain.linearRampToValueAtTime(chordPeak, startT + 0.04);
             noteGain.gain.exponentialRampToValueAtTime(0.001, startT + 1.2);
 
             noteOsc.start(startT);
@@ -9407,8 +9454,13 @@ function completeAscensionRitual() {
     }
 }
 
-// Глобальная команда для мгновенного теста ритуала из консоли или тестов
-window.testAscensionRitual = () => executeGrandAscensionRitual();
+// FIX-DEV-MODE: критично! testAscensionRitual() даёт +1 Реликвию БЕЗ проверки требований
+// (Трон Ур.2 / 5000 золота). Это была дыра для дюпа Реликвий — любой игрок с F12 мог
+// вызвать её в консоли VK-браузера и повторять бесконечно.
+// Теперь команда доступна ТОЛЬКО в dev-режиме (localhost / ?debug=1).
+if (IS_DEV_MODE) {
+    window.testAscensionRitual = () => executeGrandAscensionRitual();
+}
 
 function openCardInspect(heroId, isShowcase = false, showcaseSourceStr = '') {
     activeInspectHeroId = heroId;
@@ -11531,36 +11583,39 @@ try {
 
 // ==========================================================
 // КОНСОЛЬНЫЕ ЧИТ-КОДЫ РАЗРАБОТЧИКА (ДЛЯ ТЕСТИРОВАНИЯ ЛИГ)
+// FIX-DEV-MODE: обе команды форсируют еженедельный сезон Арены →
+// мгновенные награды лиги + повышение/понижение. Это фактически бесплатные
+// ресурсы и ранги вне игрового цикла. Теперь доступны только в dev-режиме.
 // ==========================================================
-window.testArenaPromote = () => {
-    const curLeagueId = gState.arenaLeague || 'bronze';
-    const leagueTrophies = {
-        bronze: { minTr: 150, maxTr: 800 },
-        silver: { minTr: 800, maxTr: 1500 },
-        gold: { minTr: 1500, maxTr: 2300 },
-        platinum: { minTr: 2300, maxTr: 3000 },
-        diamond: { minTr: 3000, maxTr: 3700 }
+if (IS_DEV_MODE) {
+    window.testArenaPromote = () => {
+        const curLeagueId = gState.arenaLeague || 'bronze';
+        const leagueTrophies = {
+            bronze: { minTr: 150, maxTr: 800 },
+            silver: { minTr: 800, maxTr: 1500 },
+            gold: { minTr: 1500, maxTr: 2300 },
+            platinum: { minTr: 2300, maxTr: 3000 },
+            diamond: { minTr: 3000, maxTr: 3700 }
+        };
+        gState.trophies = leagueTrophies[curLeagueId].maxTr;
+        gState.arenaSeasonWeekId = "TEST_WEEK_PROMOTE_" + Date.now();
+        checkWeeklyArenaReset();
+        console.log("✅ Тест повышения завершен. Вы стали Чемпионом и перешли в новую лигу.");
     };
-    // Ставим кубки на уровень абсолютного Топ-1 текущей лиги
-    gState.trophies = leagueTrophies[curLeagueId].maxTr;
-    gState.arenaSeasonWeekId = "TEST_WEEK_PROMOTE_" + Date.now(); // Форсируем сброс
-    checkWeeklyArenaReset();
-    console.log("✅ Тест повышения завершен. Вы стали Чемпионом и перешли в новую лигу.");
-};
 
-window.testArenaDemote = () => {
-    const curLeagueId = gState.arenaLeague || 'bronze';
-    const leagueTrophies = {
-        bronze: { minTr: 150, maxTr: 800 },
-        silver: { minTr: 800, maxTr: 1500 },
-        gold: { minTr: 1500, maxTr: 2300 },
-        platinum: { minTr: 2300, maxTr: 3000 },
-        diamond: { minTr: 3000, maxTr: 3700 }
+    window.testArenaDemote = () => {
+        const curLeagueId = gState.arenaLeague || 'bronze';
+        const leagueTrophies = {
+            bronze: { minTr: 150, maxTr: 800 },
+            silver: { minTr: 800, maxTr: 1500 },
+            gold: { minTr: 1500, maxTr: 2300 },
+            platinum: { minTr: 2300, maxTr: 3000 },
+            diamond: { minTr: 3000, maxTr: 3700 }
+        };
+        gState.trophies = leagueTrophies[curLeagueId].minTr;
+        gState.arenaSeasonWeekId = "TEST_WEEK_DEMOTE_" + Date.now();
+        checkWeeklyArenaReset();
+        console.log("❌ Тест понижения завершен. Вы упали в рейтинге и перешли в лигу ниже.");
     };
-    // Обваливаем кубки в зону вылета (Место 1000)
-    gState.trophies = leagueTrophies[curLeagueId].minTr;
-    gState.arenaSeasonWeekId = "TEST_WEEK_DEMOTE_" + Date.now(); // Форсируем сброс
-    checkWeeklyArenaReset();
-    console.log("❌ Тест понижения завершен. Вы упали в рейтинге и перешли в лигу ниже.");
-};
+}
 
