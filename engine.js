@@ -887,7 +887,11 @@ function openLegalDocument(docKey) {
     const titleEl = document.getElementById('legal-doc-title');
     const updatedEl = document.getElementById('legal-doc-updated');
     const bodyEl = document.getElementById('legal-doc-body');
-    const btnClose = document.getElementById('btn-legal-doc-close');
+    // FIX-LEGAL-CLOSE: устойчивость к рассинхрону SW-кэша и к возможным будущим дублям id.
+    // Приоритет — точный id; fallback — последняя .modal-full-btn внутри .legal-doc-window
+    // первого найденного #legal-doc-modal (getElementById возвращает первый матч — он же видимый).
+    const btnClose = document.getElementById('btn-legal-doc-close')
+        || document.querySelector('#legal-doc-modal .legal-doc-window > button.btn-action.modal-full-btn:last-of-type');
     if (!titleEl || !bodyEl) return;
 
     titleEl.innerText = data.title || '';
@@ -1339,9 +1343,12 @@ function resetFtue(silent = false) {
     if (!silent) pushToast('FTUE RESET');
 }
 
-// Хелперы для консоли — чтобы не набирать window.skipFtue() каждый раз
-window.skipFtue = () => skipFtue(false);
-window.resetFtue = () => resetFtue(false);
+// FIX-SKIPFTUE-RECURSION: убраны перезаписи window.skipFtue / window.resetFtue.
+// Проблема: skipFtue/resetFtue объявлены как function declarations — они УЖЕ доступны
+// как window.skipFtue / window.resetFtue автоматически. Строка `window.skipFtue = () => skipFtue(false)`
+// перезаписывала саму функцию стрелкой, которая внутри вызывала саму себя →
+// RangeError: Maximum call stack size exceeded (стек 15000+ кадров) при вызове из консоли.
+// Теперь skipFtue() / resetFtue() из консоли работают напрямую, silent=false по умолчанию (покажут toast).
 
 // Автоматический навигатор между вкладками игры
 function resolveFtueViewTarget(targetViewId, activeViewId) {
@@ -9659,6 +9666,23 @@ function updateSettingsAudioBtnText() {
             : (currentLang === 'RU' ? 'ВКЛ' : 'ON');
         hapticBtn.style.background = gState.isHapticsMuted ? '#273347' : 'var(--green)';
     }
+
+    // FIX-PRELOADER-SOUND: синхронизация иконки звука на экране предзагрузки.
+    // Кнопка живёт в #app-preloader и должна отражать глобальное состояние mute
+    // (isAudioMuted && isMusicMuted), пока игрок ещё не вошёл в Цитадель.
+    // Dirty-Checking через data-muted защищает от перезаписи innerHTML в момент клика.
+    const preloaderSoundBtn = document.getElementById('btn-preloader-sound');
+    if (preloaderSoundBtn) {
+        const isFullyMuted = (gState.isAudioMuted && gState.isMusicMuted);
+        if (preloaderSoundBtn.getAttribute('data-muted') !== String(isFullyMuted)) {
+            preloaderSoundBtn.setAttribute('data-muted', String(isFullyMuted));
+            if (isFullyMuted) {
+                preloaderSoundBtn.innerHTML = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="#ef4444" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:block;"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" fill="#ef4444"></polygon><line x1="23" y1="9" x2="17" y2="15"></line><line x1="17" y1="9" x2="23" y2="15"></line></svg>';
+            } else {
+                preloaderSoundBtn.innerHTML = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="#f5b041" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:block;"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" fill="#f5b041"></polygon><path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path><path d="M19.07 4.93a10 10 0 0 1 0 14.14"></path></svg>';
+            }
+        }
+    }
 }
 
 function toggleAudioFromSettings() {
@@ -10468,10 +10492,13 @@ function applyLanguage(lang) {
         openFirstPurchaseModal();
     }
 
-    // P8-fix: если открыта модалка правового документа — перерисовываем её на новом языке
+    // P8-fix: если открыта модалка правового документа — перерисовываем её на новом языке.
+    // FIX-LEGAL-CLOSE-2: читаем тот же атрибут, который пишет openLegalDocument (data-doc-key).
+    // Раньше читался несуществующий data-active-doc — при открытом privacy переключение языка
+    // схлопывало содержимое обратно в terms, а кнопка «ЗАКРЫТЬ» не переводилась ни в одном случае.
     const legalModal = document.getElementById('legal-doc-modal');
     if (legalModal && legalModal.style.display === 'flex') {
-        const activeKey = legalModal.getAttribute('data-active-doc') || 'terms';
+        const activeKey = legalModal.getAttribute('data-doc-key') || 'terms';
         openLegalDocument(activeKey);
     }
 

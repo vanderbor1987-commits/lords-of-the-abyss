@@ -262,8 +262,13 @@ html, body {
 #raid-view {
     background: #170a0a url('assets/bg/raid.webp') center / cover no-repeat;
 }
+/* FIX-QUESTS-BG-404: assets/bg/quests.webp физически отсутствует в репозитории.
+   Раньше CSS дёргал 404 при каждой загрузке экрана Заданий (виден в DevTools → Console).
+   Заменено на благородный градиент в палитре #0d1217 — консистентно с общей тёмной эстетикой.
+   Когда арт будет сгенерирован — вернуть на:
+   #quests-view { background: #0d1217 url('assets/bg/quests.webp') center / cover no-repeat; } */
 #quests-view {
-    background: #0d1217 url('assets/bg/quests.webp') center / cover no-repeat;
+    background: radial-gradient(circle at 50% 0%, #1a1410 0%, #0d1217 55%, #080b10 100%);
 }
 #shop-view {
     background: #141109 url('assets/bg/shop.webp') center / cover no-repeat;
@@ -6073,6 +6078,36 @@ img[src*="trophy.webp"] {
     color: var(--gold);
 }
 .preloader-lang-btn:active {
+    transform: scale(0.92);
+    border-color: #ffffff;
+    background: rgba(245, 176, 65, 0.2);
+}
+
+/* FIX-PRELOADER-SOUND: кнопка mute/unmute звука на экране предзагрузки.
+   Расположена под кнопкой языка. Позволяет модератору/игроку выключить звук
+   ДО входа в игру, не дожидаясь HUD-кнопки в шапке. */
+.preloader-sound-btn {
+    position: absolute;
+    top: 56px;
+    right: 16px;
+    width: 34px;
+    height: 34px;
+    padding: 0;
+    background: rgba(16, 22, 34, 0.65);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    border: 1.5px solid rgba(245, 176, 65, 0.45);
+    border-radius: 6px;
+    color: var(--gold);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    cursor: pointer;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+    transition: transform 0.08s ease, border-color 0.15s ease, background 0.15s ease;
+    z-index: 100000;
+}
+.preloader-sound-btn:active {
     transform: scale(0.92);
     border-color: #ffffff;
     background: rgba(245, 176, 65, 0.2);
