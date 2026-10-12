@@ -15,6 +15,7 @@ const STATIC_ASSETS = [
     'engine.js',
     'data-heroes.js',
     'data-i18n.js',
+    'data-legal.js',
     'manifest.json',
     'assets/bg/roster.webp',
     'assets/bg/hq.webp',

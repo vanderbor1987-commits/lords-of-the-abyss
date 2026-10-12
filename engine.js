@@ -846,14 +846,60 @@ function showPlatformRewarded(onSuccess, onError) {
     PlatformBridge.showRewarded(onSuccess, onError);
 }
 
-// Базовый URL для юридических документов. Используется абсолютный адрес GH Pages,
-// потому что внутри VK iframe window.location.origin указывает на vk.com, а не на репозиторий.
-const LEGAL_DOCS_BASE_URL = 'https://vanderbor1987-commits.github.io/lords-of-the-abyss/';
-
-// Единая точка открытия правовых документов (Настройки → «Соглашение» / «Конфиденциальность»).
-// Проксирует в PlatformBridge.openExternalUrl, который сам выбирает транспорт (VK Bridge / Yandex SDK / window.open).
+// P8-fix: правовые документы открываются ВСТРОЕННО в модальном окне внутри игрового iframe.
+// Причина: VKWebAppOpenURL открывает внешний документ в отдельном окне браузера, и клик
+// «Вернуться в игру» создаёт ДУБЛЬ игровой сессии — игрок физически покидает iframe и
+// возвращается уже в новую копию приложения. Встроенная модалка полностью устраняет эту
+// проблему: игрок читает документ, не покидая игровую сцену.
+//
+// Внешние файлы terms.html / privacy.html остаются в репозитории для VK Console
+// (поля «Правовые документы»), но из игры на них больше не ссылаемся.
 function openLegalDocument(docKey) {
-    PlatformBridge.openExternalUrl(`${LEGAL_DOCS_BASE_URL}${docKey}.html`);
+    const doc = LEGAL_DOCS?.[docKey]?.[currentLang];
+    if (!doc) return;
+    const modal = document.getElementById('legal-doc-modal');
+    const titleEl = document.getElementById('legal-doc-title');
+    const updatedEl = document.getElementById('legal-doc-updated');
+    const bodyEl = document.getElementById('legal-doc-body');
+    if (!modal || !bodyEl) return;
+
+    if (titleEl) titleEl.innerText = doc.title || '';
+    if (updatedEl) updatedEl.innerText = doc.updated || '';
+
+    // Секции рендерятся в фиксированном порядке: heading → paragraphs → list → trailingParagraphs.
+    // Весь текст прогоняется через escapeHtml — защита от XSS, даже если юр. текст когда-нибудь
+    // будет подтягиваться из внешнего источника (сейчас он статичен в data-legal.js).
+    let html = '';
+    (doc.sections || []).forEach(sec => {
+        if (sec.heading) {
+            html += `<h4 class="legal-doc-heading">${escapeHtml(sec.heading)}</h4>`;
+        }
+        (sec.paragraphs || []).forEach(p => {
+            html += `<p class="legal-doc-paragraph">${escapeHtml(p)}</p>`;
+        });
+        if (Array.isArray(sec.list) && sec.list.length > 0) {
+            html += '<ul class="legal-doc-list">';
+            sec.list.forEach(li => {
+                html += `<li>${escapeHtml(li)}</li>`;
+            });
+            html += '</ul>';
+        }
+        (sec.trailingParagraphs || []).forEach(p => {
+            html += `<p class="legal-doc-paragraph">${escapeHtml(p)}</p>`;
+        });
+    });
+    bodyEl.innerHTML = html;
+    bodyEl.scrollTop = 0;
+
+    // Запоминаем текущий ключ — пригодится при переключении языка, чтобы перерисовать ту же модалку
+    modal.setAttribute('data-active-doc', docKey);
+    modal.style.display = 'flex';
+    playSfx(400, 'sine', 0.05);
+}
+
+function closeLegalDocModal() {
+    const m = document.getElementById('legal-doc-modal');
+    if (m) m.style.display = 'none';
 }
 
 function tryTriggerInterstitialAd() {
@@ -10336,6 +10382,13 @@ function applyLanguage(lang) {
         openFirstPurchaseModal();
     }
 
+    // P8-fix: если открыта модалка правового документа — перерисовываем её на новом языке
+    const legalModal = document.getElementById('legal-doc-modal');
+    if (legalModal && legalModal.style.display === 'flex') {
+        const activeKey = legalModal.getAttribute('data-active-doc') || 'terms';
+        openLegalDocument(activeKey);
+    }
+
     // L13: кнопка Hero Spotlight (share) — статичный текст в index.html,
     // требует явного обновления при смене языка (data-i18n не используется).
     const spotlightShare = document.getElementById('btn-spotlight-share');
@@ -10796,6 +10849,7 @@ function initHardwareBackNavigation() {
             { id: 'buy-modal', close: closeBuyModal },
             { id: 'hard-reset-modal', close: closeHardResetModal },
             { id: 'chronicle-modal', close: closeChronicleModal },
+            { id: 'legal-doc-modal', close: closeLegalDocModal },
             { id: 'chronicles-archive-modal', close: closeChroniclesArchiveModal }
         ];
 

@@ -1619,7 +1619,18 @@
             </div>
         </div>
 
-        <!-- (Кодекс перенесен во вкладку Штаба) -->
+        <!-- МОДАЛЬНОЕ ОКНО: ВСТРОЕННЫЙ ПРОСМОТР ПРАВОВОГО ДОКУМЕНТА -->
+        <div class="modal-backdrop" id="legal-doc-modal" style="display: none; z-index: 3600;">
+            <div class="modal-window legal-doc-window">
+                <div class="modal-header-row">
+                    <h3 class="modal-headline" id="legal-doc-title">ПОЛЬЗОВАТЕЛЬСКОЕ СОГЛАШЕНИЕ</h3>
+                    <span class="modal-close-x" onclick="closeLegalDocModal()">✖</span>
+                </div>
+                <div class="legal-doc-updated" id="legal-doc-updated">Редакция от 12 октября 2026 года</div>
+                <div class="legal-doc-body" id="legal-doc-body"></div>
+                <button class="btn-action modal-full-btn" onclick="closeLegalDocModal()" style="margin-top:6px;">ЗАКРЫТЬ</button>
+            </div>
+        </div>
 
         <!-- Контейнер всплывающих тостов -->
         <div id="toast-feed"></div>
@@ -1628,6 +1639,7 @@
 
 <script src="data-i18n.js?v=3.4"></script>
 <script src="data-heroes.js?v=3.4"></script>
+<script src="data-legal.js?v=1.0"></script>
 <script src="engine.js?v=3.4"></script>
 </body>
 </html>
