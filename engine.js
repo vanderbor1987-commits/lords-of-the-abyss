@@ -967,9 +967,11 @@ function loadGame() {
         delete gState.stageQuests.wheel;
         delete gState.stageQuests.daily;
     }
-    const baseBossHp = Math.floor(5000000 * (1 + (gState.relics || 0) * 0.35));
-    if (!gState.worldBossMaxHp || gState.worldBossMaxHp < 5000000 || gState.worldBossMaxHp > 100000000) {
-        gState.worldBossMaxHp = baseBossHp;
+    // FIX-RAID-HP: HP Левиафана теперь фиксируется от текущего CP игрока (25 ударов до победы).
+    // Старая формула relics * 0.35 + потолок 100M не подходила для эндгейма.
+    // Fallback считает HP от актуального CP атаки, если сейв ещё не содержит значения.
+    if (!gState.worldBossMaxHp || gState.worldBossMaxHp < 5000000) {
+        gState.worldBossMaxHp = Math.max(5000000, Math.floor(calculateCP(gState.attackFormation) * 25));
     }
     if (gState.worldBossHp === undefined || gState.worldBossHp > gState.worldBossMaxHp) {
         gState.worldBossHp = gState.worldBossMaxHp;
@@ -3851,6 +3853,8 @@ function setRosterFactionFilter(faction) {
     ['all', 'light', 'undead', 'chaos', 'demon'].forEach(f => {
         document.getElementById(`filter-f-${f}`)?.classList.toggle('active', f === faction);
     });
+    playFilterClickSfx();
+    triggerHaptic('tap');
     renderCards();
 }
 
@@ -5742,11 +5746,13 @@ function speedupRaidCooldown() {
     });
 }
 
-// Максимальное HP босса: чистые 5,000,000 HP со скалированием от Реликвий
+// FIX-RAID-HP: Левиафан требует ~25 ударов для убийства.
+// HP фиксируется раз в неделю (в полночь воскресенья) от текущего CP игрока.
+// Это устраняет ваншот ветеранами с 10+ реликвиями и сохраняет вызов для всех.
+// Fallback для чистых сейвов и первого запуска — считаем от текущего CP.
 function getRaidMaxHp() {
-    const calculatedMax = Math.floor(5000000 * (1 + (gState.relics || 0) * 0.35));
     if (!gState.worldBossMaxHp || gState.worldBossMaxHp < 5000000) {
-        gState.worldBossMaxHp = calculatedMax;
+        gState.worldBossMaxHp = Math.max(5000000, Math.floor(calculateCP(gState.attackFormation) * 25));
     }
     return gState.worldBossMaxHp;
 }
@@ -5777,16 +5783,19 @@ function checkWeeklyRaidReset() {
     _lastWeeklyResetCheckTs = _now;
 
     const curWeek = getWeekIdentifier();
-    const calculatedMax = Math.floor(5000000 * (1 + (gState.relics || 0) * 0.35));
+    // FIX-RAID-HP: HP Левиафана считается от текущего CP игрока — ~25 ударов до победы.
+    // Убрана старая формула relics * 0.35 и верхний потолок 100M, ломавший эндгейм.
+    const calculatedMax = Math.max(5000000, Math.floor(calculateCP(gState.attackFormation) * 25));
 
-    if (!gState.worldBossMaxHp || gState.worldBossMaxHp < 5000000 || gState.worldBossMaxHp > 100000000) {
+    if (!gState.worldBossMaxHp || gState.worldBossMaxHp < 5000000) {
         gState.worldBossMaxHp = calculatedMax;
     }
     if (gState.worldBossHp === undefined || gState.worldBossHp > gState.worldBossMaxHp) {
         gState.worldBossHp = gState.worldBossMaxHp;
     }
 
-    // Наступило воскресенье полночь — вот теперь рождается усиленный босс на новую неделю!
+    // Наступило воскресенье полночь — старый босс «убегает», рождается новый.
+    // HP сбрасывается в полный максимум и фиксируется на всю неделю.
     if (gState.worldBossWeekId !== curWeek) {
         gState.worldBossWeekId = curWeek;
         gState.worldBossMaxHp = calculatedMax;
@@ -6096,7 +6105,7 @@ function showEpicQuote(hero) {
 
     overlay.style.display = 'flex';
     setTimeout(() => overlay.style.opacity = '1', 30);
-    playSfx(1400, 'triangle', 0.4);
+    playTriumphFanfare(hero?.tier === 'SSS');
     triggerHaptic('legendary');
     spawnCelebrationConfetti();
     window.lastCelebratedHeroName = hero.name[currentLang] || hero.name['EN'];
@@ -6245,7 +6254,7 @@ function revealGachaCard(idx, hero, isEpic) {
     }
 
     if (isEpic) {
-        playSfx(1400, 'square', 0.2); // Победный звук
+        playTriumphFanfare(hero?.tier === 'SSS');
         triggerHaptic('legendary');
         // Тряска экрана (Screen Shake)
         const appViewport = document.getElementById('app-viewport');
@@ -6526,6 +6535,70 @@ function playCoinSfx() {
 function playBladeClash() {
     playSfx(300, 'sawtooth', 0.15);
     setTimeout(() => playSfx(900, 'triangle', 0.1), 30);
+}
+
+// Тактильный микро-щелчок для фильтров и переключателей интерфейса (Game Juice)
+function playFilterClickSfx() {
+    if (gState.isAudioMuted || (gState.sfxVolume || 0) <= 0) return;
+    try {
+        const ctx = getAudioContext();
+        if (!ctx) return;
+        if (ctx.state === 'suspended') ctx.resume();
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'triangle';
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+
+        const curT = ctx.currentTime;
+        osc.frequency.setValueAtTime(1600, curT);
+        osc.frequency.exponentialRampToValueAtTime(2200, curT + 0.02);
+
+        const curVol = (gState.sfxVolume !== undefined ? gState.sfxVolume : 0.8) * 0.07;
+        gain.gain.setValueAtTime(curVol, curT);
+        gain.gain.exponentialRampToValueAtTime(0.0001, curT + 0.025);
+
+        osc.start(curT);
+        osc.stop(curT + 0.03);
+    } catch(e) {}
+}
+
+// Процедурные золотые фанфары для ультра-редких [S] / [SS] / [SSS] карт (0 МБ на диске)
+function playTriumphFanfare(isApex = false) {
+    if (gState.isAudioMuted || (gState.sfxVolume || 0) <= 0) return;
+    try {
+        const ctx = getAudioContext();
+        if (!ctx) return;
+        if (ctx.state === 'suspended') ctx.resume();
+
+        const curT = ctx.currentTime;
+        const baseVol = (gState.sfxVolume !== undefined ? gState.sfxVolume : 0.8) * 0.16;
+
+        // Мажорное восходящее арпеджио: C5, E5, G5, C6 и апофеоз E6 для Первородных Богов
+        const notes = isApex 
+            ? [523.25, 659.25, 783.99, 1046.50, 1318.51] 
+            : [523.25, 659.25, 783.99, 1046.50];
+
+        notes.forEach((freq, idx) => {
+            const osc = ctx.createOscillator();
+            const gain = ctx.createGain();
+            const isLast = (idx === notes.length - 1);
+            osc.type = isLast ? 'triangle' : 'sine';
+            osc.connect(gain);
+            gain.connect(ctx.destination);
+
+            const noteStart = curT + (idx * 0.065);
+            const noteDuration = isLast ? (isApex ? 0.75 : 0.55) : 0.22;
+
+            osc.frequency.setValueAtTime(freq, noteStart);
+            gain.gain.setValueAtTime(0.0001, noteStart);
+            gain.gain.linearRampToValueAtTime(baseVol, noteStart + 0.02);
+            gain.gain.exponentialRampToValueAtTime(0.0001, noteStart + noteDuration);
+
+            osc.start(noteStart);
+            osc.stop(noteStart + noteDuration + 0.05);
+        });
+    } catch(e) {}
 }
 
 // Безопасный мост для совместимости вызовов
@@ -7046,6 +7119,7 @@ function claimWheelPrize(type) {
 
 function grantWheelHero(heroId, hero, compensationCryst, isSuperJackpot = false) {
     if (!hero) return;
+    playTriumphFanfare(isSuperJackpot || hero.tier === 'SSS');
     triggerHaptic('legendary');
     spawnCelebrationConfetti();
 
@@ -8237,7 +8311,8 @@ const CODEX_MILESTONES = [
 function selectCodexFaction(f) {
     activeCodexFaction = f;
     renderCodexUI();
-    playSfx(420, 'sine', 0.05);
+    playFilterClickSfx();
+    triggerHaptic('tap');
 }
 
 function renderCodexUI() {
@@ -10536,7 +10611,10 @@ function openChronicleModal(floor, isArchiveView = false) {
     if (isArchiveView || isAlreadyClaimed) {
         if (rewEl) rewEl.style.display = 'none';
     } else {
-        if (rewEl) rewEl.style.display = 'block';
+        if (rewEl) {
+            rewEl.innerHTML = I18N[currentLang]?.chronicles_reward_msg || '+50 <img src="assets/icons/crystal.webp" class="res-icon-inline" alt="C"> Crystals Reward!';
+            rewEl.style.display = 'block';
+        }
         gState.claimedChronicles.push(floor);
         gState.crystals = (gState.crystals || 0) + 50;
         saveGame();
