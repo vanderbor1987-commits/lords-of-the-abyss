@@ -5958,14 +5958,25 @@ img[src*="trophy.webp"] {
     box-shadow: none !important;
 }
 
-/* P8-fix: встроенный просмотр правовых документов (терms/privacy) */
+/* P8-ARCH: встроенная модалка юридических документов (terms / privacy).
+   z-index 2147483000 (потолок int32 / 1000) гарантированно перебивает #app-preloader (99999),
+   даже если inline-стиль z-index: 100000 по какой-то причине не применился.
+   Это последний рубеж — выше в проекте не поднимается ни один элемент. */
+#legal-doc-modal {
+    z-index: 2147483000 !important;
+    background: rgba(5, 7, 10, 0.92) !important;
+    backdrop-filter: blur(6px) !important;
+    -webkit-backdrop-filter: blur(6px) !important;
+}
+
 .legal-doc-window {
-    max-width: 440px !important;
-    max-height: 88vh !important;
-    padding: 14px 12px !important;
+    max-width: 420px !important;
+    max-height: 92% !important;
     display: flex !important;
     flex-direction: column !important;
-    gap: 8px !important;
+    gap: 6px !important;
+    padding: 12px 14px !important;
+    box-sizing: border-box !important;
 }
 .legal-doc-window .modal-headline {
     font-size: 14px !important;
