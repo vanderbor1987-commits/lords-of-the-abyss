@@ -361,7 +361,8 @@ const I18N = {
         hub_status_full: '10/10 ПОЛНО',
         hub_status_defeated: 'ПОВЕРЖЕН',
         hub_status_ready: 'УДАР ГОТОВ!',
-        settings_sec_platform: 'ПЛАТФОРМА VK:',
+        // FIX-NO-VK-BRAND: убран бренд «VK» из UI — снижаем риск претензий по п. 3.6.2.
+        settings_sec_platform: 'ДОПОЛНИТЕЛЬНО:',
         settings_perk_bookmark_lbl: 'Добавить в избранное (меню слева)',
         settings_perk_homescreen_lbl: 'Добавить на экран смартфона',
         settings_perk_shortcut_lbl: 'Иконка на рабочий стол',
@@ -884,7 +885,7 @@ const I18N = {
         hub_status_full: '10/10 FULL',
         hub_status_defeated: 'DEFEATED',
         hub_status_ready: 'STRIKE READY!',
-        settings_sec_platform: 'VK PLATFORM:',
+        settings_sec_platform: 'ADDITIONAL:',
         settings_perk_bookmark_lbl: 'Add to Favorites (left menu)',
         settings_perk_homescreen_lbl: 'Add to smartphone homescreen',
         settings_perk_shortcut_lbl: 'Desktop shortcut',

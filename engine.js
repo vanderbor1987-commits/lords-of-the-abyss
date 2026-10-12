@@ -47,12 +47,21 @@ const IS_DEV_MODE = (() => {
     }
 })();
 
+// FIX-CLEAN-CONSOLE: информационные логи только в dev-режиме.
+// Модератор VK открывает DevTools и видит либо чистую консоль (прод),
+// либо набор диагностики (localhost / ?debug=1). Это закрывает п. 4.1.3 правил VK
+// («Приложение должно быть в готовом виде, без тестового контента или включённой консоли»).
+// console.warn и console.error НЕ подавляются — критичные сигналы остаются видимыми.
+function devLog(...args) {
+    if (IS_DEV_MODE) console.log(...args);
+}
+
 // FIX-BUILD-VERSION: единый источник правды о версии сборки.
 // Обновляй эту пару при каждом релизном патче — по дате в UI сразу видно,
 // применился ли свежий build из GitHub во встроенном VK-браузере.
 // Формат: BUILD_VERSION — мажорная.минорная (совпадает с бампом sw.js CACHE_NAME),
 //         BUILD_DATE    — ISO-дата сборки.
-const BUILD_VERSION = '4.5';
+const BUILD_VERSION = '4.6';
 const BUILD_DATE = '13.10.2026';
 
 // ==========================================================
@@ -364,8 +373,19 @@ const PlatformBridge = {
                     const type = event.detail.type;
                     if (type === 'VKWebAppViewHide') {
                         pauseBgMusic();
+                        // FIX-VIEWHIDE-AUDIO: глушим Web Audio API целиком.
+                        // Раньше pauseBgMusic() останавливал только HTMLAudio-трек,
+                        // а процедурные SFX (playCosmicAscensionAudio, playTriumphFanfare)
+                        // продолжали звучать из свёрнутого приложения (нарушение п. 2.2.5).
+                        if (typeof aCtx !== 'undefined' && aCtx && aCtx.state === 'running') {
+                            try { aCtx.suspend(); } catch(e) {}
+                        }
                         saveGame(true);
                     } else if (type === 'VKWebAppViewRestore') {
+                        // Возврат из свёрнутого состояния: поднимаем контекст обратно
+                        if (typeof aCtx !== 'undefined' && aCtx && aCtx.state === 'suspended') {
+                            try { aCtx.resume(); } catch(e) {}
+                        }
                         if (!gState.isMusicMuted) playBgMusic();
                     }
                 });
@@ -641,7 +661,7 @@ const PlatformBridge = {
             const remoteTick = remoteState.lastTickTime || 0;
 
             if (remoteTick > localTick) {
-                console.log('[Cloud Sync] Накат более свежего прогресса из облака платформы');
+                devLog('[Cloud Sync] Накат более свежего прогресса из облака платформы');
                 gState = Object.assign({}, gState, remoteState);
                 try {
                     localStorage.setItem(SAVE_KEY, JSON.stringify(gState));
@@ -658,7 +678,7 @@ const PlatformBridge = {
                 renderUI();
                 pushToast(currentLang === 'RU' ? 'Прогресс синхронизирован с облаком!' : 'Cloud save synchronized!');
             } else if (localTick > remoteTick) {
-                console.log('[Cloud Sync] Локальный сейв новее облачного, обновляем облако');
+                devLog('[Cloud Sync] Локальный сейв новее облачного, обновляем облако');
                 this.queueCloudSave(true);
             }
         } catch(e) {
@@ -874,7 +894,10 @@ const PlatformBridge = {
                     pushToast(currentLang === 'RU' ? "Оплата отменена" : "Order cancelled");
                 }
             }).catch((err) => {
-                console.warn('[VK IAP] Order failed:', err);
+                // FIX-CLEAN-CONSOLE: warn только в dev-режиме. В проде — молча, потому что
+                // до регистрации IAP-товаров (после модерации) любой вызов падает с ошибкой
+                // «item not found» — это ожидаемое поведение, не проблема для модератора.
+                if (IS_DEV_MODE) console.warn('[VK IAP] Order failed:', err);
                 pushToast(currentLang === 'RU' ? "Оплата отменена" : "Order cancelled");
             });
             return;
@@ -6690,11 +6713,22 @@ let demonSpawnTimer = null;
 
 function scheduleNextDemon() {
     if (demonSpawnTimer) clearTimeout(demonSpawnTimer);
+    // FIX-DEMON-FTUE: пока идёт обучение, демон не спавнится.
+    // z-index демона (2950) выше Советника (2000) и модалок — во время FTUE
+    // он бы перекрывал инструкции и кнопки. Это задумано как фича для основного
+    // геймплея, но в туториале только отвлекает и может быть сочтён модератором
+    // как «маскировка важных элементов» (п. 3.4.3). После 12-го шага — работает как раньше.
+    if (!isFtueCompleted()) {
+        demonSpawnTimer = setTimeout(scheduleNextDemon, 60000);
+        return;
+    }
     demonSpawnTimer = setTimeout(spawnDemon, 180000);
 }
 
 function spawnDemon() {
     if (demonActive) return;
+    // Страховка от гонки: если игрок только что завершил FTUE, но таймер успел стрельнуть
+    if (!isFtueCompleted()) return;
     const demonEl = document.getElementById('flying-demon');
     const viewport = document.getElementById('app-viewport');
     if (!demonEl || !viewport) return;
@@ -10954,7 +10988,16 @@ document.addEventListener('visibilitychange', () => {
         saveGame(true);
         PlatformBridge.flushCloudSave();
         pauseBgMusic();
+        // FIX-VIEWHIDE-AUDIO: аналогично VKWebAppViewHide — глушим Web Audio API
+        // при сворачивании вкладки браузера (standalone / GH Pages / Yandex).
+        if (typeof aCtx !== 'undefined' && aCtx && aCtx.state === 'running') {
+            try { aCtx.suspend(); } catch(e) {}
+        }
     } else {
+        // Возврат во вкладку — поднимаем аудиоконтекст
+        if (typeof aCtx !== 'undefined' && aCtx && aCtx.state === 'suspended') {
+            try { aCtx.resume(); } catch(e) {}
+        }
         if (!demonActive) scheduleNextDemon();
         checkOfflineIncome();
         // U12/U13-b: при возврате в игру сбрасываем дроссели дневных и недельных проверок.
@@ -11341,7 +11384,7 @@ async function validateLaunchParams() {
         timeoutId = null;
 
         if (!resp.ok) {
-            console.warn('[LOTA] P9: validator HTTP', resp.status);
+            devLog('[LOTA] P9: validator HTTP', resp.status);
             return { valid: true, reason: 'validator_http_' + resp.status };
         }
 
@@ -11357,7 +11400,7 @@ async function validateLaunchParams() {
         return result;
     } catch (e) {
         if (timeoutId) clearTimeout(timeoutId);
-        console.warn('[LOTA] P9: validator unavailable —', e && e.message);
+        devLog('[LOTA] P9: validator unavailable —', e && e.message);
         return { valid: true, reason: 'validator_unreachable' };
     }
 }
@@ -11366,7 +11409,7 @@ async function validateLaunchParams() {
 try {
     // FIX-BUILD-VERSION: boot-лог сборки в консоль. По нему в DevTools VK сразу видно,
     // какая версия кода реально загружена (критично при итерациях с GitHub Pages).
-    console.log(
+    devLog(
         `%c[LOTA] BUILD v${BUILD_VERSION} · ${BUILD_DATE} · ${isRunningInsideVK() ? 'VK' : (isRunningInsideYandex() ? 'Yandex' : 'Standalone')}`,
         'color:#f5b041; font-weight:bold; font-size:11px;'
     );
@@ -11386,7 +11429,8 @@ try {
         }
 
         if (!p9.valid && (p9.reason === 'sign_mismatch' || p9.reason === 'sign_expired')) {
-            // F1: не блокируем игру, но даём видимый сигнал
+            // F1: не блокируем игру, но даём видимый сигнал. Warn оставляем —
+            // это реальный сигнал безопасности, не info-шум.
             console.warn('[LOTA] P9: VALIDATION FAILED —', p9.reason);
             setTimeout(() => {
                 if (typeof pushToast === 'function') {
@@ -11396,7 +11440,7 @@ try {
                 }
             }, 1500);
         } else if (p9.valid) {
-            console.log('[LOTA] P9: launch params validation OK (' + p9.reason + ')');
+            devLog('[LOTA] P9: launch params validation OK (' + p9.reason + ')');
         }
 
         // Загружаем прогресс после валидации (даже при F1-провале — игра работает)
