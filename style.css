@@ -6124,11 +6124,60 @@ img[src*="trophy.webp"] {
     background: rgba(245, 176, 65, 0.2);
     margin: 4px 0;
 }
+.main-menu-divider.danger {
+    background: rgba(239, 68, 68, 0.35);
+    margin: 6px 0 4px 0;
+}
 .mm-value {
     font-family: 'Inter', sans-serif;
     font-size: 12px;
     font-weight: 800;
     color: var(--gold);
+}
+/* FIX-MENU-EXIT: метка опасности внутри кнопки сброса */
+.mm-danger-tag {
+    font-family: 'Inter', sans-serif;
+    font-size: 10px;
+    font-weight: 900;
+    color: #fca5a5;
+    background: rgba(239, 68, 68, 0.2);
+    border: 1px solid rgba(239, 68, 68, 0.5);
+    border-radius: 4px;
+    padding: 1px 6px;
+    letter-spacing: 0.4px;
+}
+/* FIX-MENU-EXIT: нейтральная кнопка выхода (не danger, не accent) */
+.main-menu-item.exit {
+    background: #0f141d;
+    border-color: var(--border-metal);
+    color: #cbd5e1;
+}
+.main-menu-item.exit:active {
+    background: #1a2233;
+    border-color: #64748b;
+}
+/* FIX-BUILD-VERSION: подвал меню со сборкой */
+.mm-build-footer {
+    text-align: center;
+    font-family: 'Inter', sans-serif;
+    font-size: 10.5px;
+    font-weight: 700;
+    color: #64748b;
+    letter-spacing: 0.3px;
+    padding: 6px 0 2px 0;
+}
+/* FIX-BUILD-VERSION: тег сборки на предзагрузке — скромно в углу, не мешает модерации */
+.preloader-build-tag {
+    position: absolute;
+    bottom: 12px;
+    right: 14px;
+    font-family: 'Inter', sans-serif;
+    font-size: 10.5px;
+    font-weight: 700;
+    color: #475569;
+    letter-spacing: 0.3px;
+    pointer-events: none;
+    z-index: 100000;
 }
 
 /* Кнопка ☰ скрыта во время обучения — игрок не должен прервать FTUE */

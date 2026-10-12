@@ -75,6 +75,10 @@
             <button class="btn-action preloader-start-btn" id="btn-preloader-start" onclick="startGameFromPreloader()" style="display: none;" data-i18n="title_start_new">
                 ВОЙТИ В БЕЗДНУ
             </button>
+
+            <!-- FIX-BUILD-VERSION: маленький индикатор сборки в углу предзагрузки.
+                 По дате сразу видно, применился ли последний патч из GitHub. -->
+            <div class="preloader-build-tag" id="ui-build-version-preloader">v4.1 · 12.10.2026</div>
         </div>
 
         <!-- ==========================================================
@@ -1504,6 +1508,8 @@
                     <button type="button" class="settings-legal-link" onclick="PlatformBridge.openExternalUrl('https://vk.ru/lordsabyss')" data-i18n="legal_community">Сообщество</button>
                 </div>
                 <div style="text-align: center; color: var(--border-metal-light); font-size: 11px; font-weight: 800; margin-top: 8px; letter-spacing: 0.5px;">DEVELOPED BY VANDER BOR</div>
+                <!-- FIX-BUILD-VERSION: версия сборки для QA — сразу видно, применился ли патч из репо. -->
+                <div style="text-align: center; color: #64748b; font-size: 10.5px; font-weight: 700; margin-top: 2px; letter-spacing: 0.3px;" id="ui-build-version-settings">СБОРКА v4.1 · 12.10.2026</div>
             </div>
         </div>
 
@@ -1684,19 +1690,35 @@
                         <span class="mm-value" id="mm-sound-val">ВКЛ</span>
                     </button>
                     <div class="main-menu-divider"></div>
-                    <button class="main-menu-item" onclick="closeMainMenu(); openLegalDocument('terms')">
+                    <!-- FIX-MENU-EXIT: НЕ закрываем меню перед открытием юр-документа/сообщества.
+                         legal-doc-modal имеет z-index 2147483000 и перекроет меню (1050) сверху.
+                         После его закрытия игрок возвращается к меню — корректный UX «back to menu». -->
+                    <button class="main-menu-item" onclick="openLegalDocument('terms')">
                         <span data-i18n="legal_terms">СОГЛАШЕНИЕ</span>
                     </button>
-                    <button class="main-menu-item" onclick="closeMainMenu(); openLegalDocument('privacy')">
+                    <button class="main-menu-item" onclick="openLegalDocument('privacy')">
                         <span data-i18n="legal_privacy">КОНФИДЕНЦИАЛЬНОСТЬ</span>
                     </button>
-                    <button class="main-menu-item" onclick="closeMainMenu(); PlatformBridge.openExternalUrl('https://vk.ru/lordsabyss')">
+                    <button class="main-menu-item" onclick="PlatformBridge.openExternalUrl('https://vk.ru/lordsabyss')">
                         <span data-i18n="legal_community">СООБЩЕСТВО</span>
                     </button>
-                    <div class="main-menu-divider"></div>
-                    <button class="main-menu-item danger" onclick="closeMainMenu(); openHardResetModal()">
+
+                    <!-- Опасная зона: сброс прогресса -->
+                    <div class="main-menu-divider danger"></div>
+                    <button class="main-menu-item danger" onclick="openHardResetModal()">
                         <span data-i18n="settings_btn_reset">СБРОСИТЬ ПРОГРЕСС</span>
+                        <span class="mm-danger-tag" data-i18n="menu_reset_danger_tag">⚠ ОПАСНО</span>
                     </button>
+
+                    <!-- Выход из игры: отдельная нейтральная зона внизу -->
+                    <div class="main-menu-divider"></div>
+                    <button class="main-menu-item exit" onclick="exitGame()">
+                        <span data-i18n="menu_exit">ВЫХОД</span>
+                        <span class="mm-value" data-i18n="menu_exit_hint" style="color:var(--text-muted); font-size:11px;">Покинуть игру</span>
+                    </button>
+
+                    <!-- Индикатор сборки: по дате видно, применился ли последний патч -->
+                    <div class="mm-build-footer" id="mm-build-footer">СБОРКА v4.1 · 12.10.2026</div>
                 </div>
             </div>
         </div>

@@ -251,6 +251,12 @@ const I18N = {
         menu_language: 'ЯЗЫК',
         menu_sound: 'ЗВУК',
         settings_reset_hint: 'Сброс прогресса доступен в ☰ Главном меню',
+        // FIX-MENU-EXIT: пункт выхода внизу Главного меню + метка опасности у сброса.
+        menu_reset_danger_tag: '⚠ ОПАСНО',
+        menu_exit: 'ВЫХОД',
+        menu_exit_hint: 'Покинуть игру',
+        // FIX-BUILD-VERSION: метка сборки в меню/настройках/предзагрузке.
+        build_label: 'СБОРКА',
 
         // Алтарь
         altar_title: 'Врата Призыва Бездны',
@@ -770,6 +776,10 @@ const I18N = {
         menu_language: 'LANGUAGE',
         menu_sound: 'SOUND',
         settings_reset_hint: 'Progress reset is available in ☰ Main Menu',
+        menu_reset_danger_tag: '⚠ DANGER',
+        menu_exit: 'EXIT',
+        menu_exit_hint: 'Leave the game',
+        build_label: 'BUILD',
 
         // Altar
         altar_title: 'Void Summon Gates',

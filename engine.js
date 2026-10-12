@@ -21,6 +21,15 @@ const detectedSysLang = (typeof navigator !== 'undefined' && (navigator.language
 const defaultPlatformLang = (isVkContext || vkLangParam === 'ru') ? 'RU' : detectedSysLang;
 let currentLang = savedLangKey || defaultPlatformLang;
 const SAVE_KEY = 'lords_core_v31_rebalance';
+
+// FIX-BUILD-VERSION: единый источник правды о версии сборки.
+// Обновляй эту пару при каждом релизном патче — по дате в UI сразу видно,
+// применился ли свежий build из GitHub во встроенном VK-браузере.
+// Формат: BUILD_VERSION — мажорная.минорная (совпадает с бампом sw.js CACHE_NAME),
+//         BUILD_DATE    — ISO-дата сборки.
+const BUILD_VERSION = '4.1';
+const BUILD_DATE = '2026-10-12';
+
 let activeAssignExpId = null;
 let isAscendingInProgress = false;
 let isAutoSpendingInProgress = false;
@@ -967,6 +976,54 @@ function openMainMenu() {
 function closeMainMenu() {
     const m = document.getElementById('main-menu-modal');
     if (m) m.style.display = 'none';
+}
+
+// FIX-MENU-EXIT: нативное закрытие/сворачивание игры на каждой платформе.
+// VK — VKWebAppClose (нативное закрытие мини-аппа).
+// Yandex — GameplayAPI.stop() (сигнал платформе, что игрок вышел из gameplay).
+// Standalone — браузер сам не даст закрыть таб скриптом, поэтому показываем подсказку.
+function exitGame() {
+    closeMainMenu();
+
+    if (isRunningInsideVK() && window.vkBridge) {
+        try {
+            window.vkBridge.send('VKWebAppClose', { status: 'success' }).catch(() => {});
+        } catch (e) {
+            pushToast(currentLang === 'RU' ? 'Закройте окно игры' : 'Close the game window');
+        }
+        return;
+    }
+
+    if (isRunningInsideYandex() && PlatformBridge && PlatformBridge.ysdkInstance) {
+        try {
+            const gApi = PlatformBridge.ysdkInstance.features && PlatformBridge.ysdkInstance.features.GameplayAPI;
+            if (gApi && typeof gApi.stop === 'function') gApi.stop();
+        } catch (e) {}
+        pushToast(currentLang === 'RU' ? 'Игра свёрнута' : 'Game minimized');
+        return;
+    }
+
+    // Standalone (localhost / GitHub Pages / Telegram): window.close() заблокирован браузером
+    pushToast(currentLang === 'RU' ? 'Закройте вкладку браузера' : 'Close the browser tab');
+}
+
+// FIX-BUILD-VERSION: рендер метки сборки в трёх местах UI.
+// Вызывается из renderUI() (тик) — дешёвое сравнение через textContent.
+function renderBuildVersion() {
+    const label = (typeof I18N !== 'undefined' && I18N[currentLang] && I18N[currentLang].build_label)
+        ? I18N[currentLang].build_label
+        : 'СБОРКА';
+    const text = `${label} v${BUILD_VERSION} · ${BUILD_DATE}`;
+    const shortText = `v${BUILD_VERSION} · ${BUILD_DATE}`;
+
+    const elSettings = document.getElementById('ui-build-version-settings');
+    if (elSettings && elSettings.textContent !== text) elSettings.textContent = text;
+
+    const elMenu = document.getElementById('mm-build-footer');
+    if (elMenu && elMenu.textContent !== text) elMenu.textContent = text;
+
+    const elPreloader = document.getElementById('ui-build-version-preloader');
+    if (elPreloader && elPreloader.textContent !== shortText) elPreloader.textContent = shortText;
 }
 
 // Синхронизация динамических значений меню (язык, звук, скрытие «В ЦИТАДЕЛЬ»).
@@ -10165,6 +10222,7 @@ function renderUI() {
 
     updateAdButtonText();
     updateSettingsAudioBtnText();
+    renderBuildVersion(); // FIX-BUILD-VERSION: метка сборки в UI (меню, настройки, предзагрузка)
     // MAJOR-M4: checkNotificationBadges() намеренно НЕ вызывается здесь.
     // renderUI работает на 60 FPS, а проверка бейджей включает isCodexRewardReady() с полным
     // сканом 84 героев × 4 фракции. Все триггерные точки вызывают его явно (прогресс квестов,
@@ -10577,6 +10635,8 @@ function applyLanguage(lang) {
     renderUI();
     // FIX-4.2.10: обновление динамических значений Главного меню (значения вне data-i18n)
     if (typeof updateMainMenuUI === 'function') updateMainMenuUI();
+    // FIX-BUILD-VERSION: перерисовка метки сборки при смене языка (СБОРКА ↔ BUILD)
+    if (typeof renderBuildVersion === 'function') renderBuildVersion();
 }
 
 function toggleLanguage() {
@@ -11062,6 +11122,13 @@ function initStageScaler() {
 
 // Безопасный запуск ядра и инициализация моста платформ
 try {
+    // FIX-BUILD-VERSION: boot-лог сборки в консоль. По нему в DevTools VK сразу видно,
+    // какая версия кода реально загружена (критично при итерациях с GitHub Pages).
+    console.log(
+        `%c[LOTA] BUILD v${BUILD_VERSION} · ${BUILD_DATE} · ${isRunningInsideVK() ? 'VK' : (isRunningInsideYandex() ? 'Yandex' : 'Standalone')}`,
+        'color:#f5b041; font-weight:bold; font-size:11px;'
+    );
+
     initStageScaler();
     loadGame();
     applyLanguage(currentLang);
