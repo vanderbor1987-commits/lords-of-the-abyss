@@ -37,10 +37,16 @@ const IS_DEV_MODE = (() => {
         if (typeof window === 'undefined') return false;
         const host = (window.location && window.location.hostname) || '';
         const search = (window.location && window.location.search) || '';
+        const urlParams = new URLSearchParams(search);
+        // FIX-DEBUG-OVERRIDE: явный override для QA — ?debug=0 отключает dev-режим
+        // даже на localhost. Нужен, чтобы локально проверить «как увидит модератор в VK»:
+        // консоль должна быть полностью чистой. Раньше этого флага не было — localhost
+        // всегда шёл в dev-ветку, и QA-проверка прода была невозможна.
+        if (urlParams.get('debug') === '0') return false;
         // Localhost-разработка: полный доступ к dev-командам
         if (host === 'localhost' || host === '127.0.0.1' || host === '0.0.0.0') return true;
         // QA-параметр: ?debug=1 в URL — работает на любом хосте (GH Pages, тест на телефоне)
-        if (new URLSearchParams(search).get('debug') === '1') return true;
+        if (urlParams.get('debug') === '1') return true;
         return false;
     } catch (e) {
         return false;
@@ -363,33 +369,42 @@ const PlatformBridge = {
         } catch(e) {}
     },
 
-    init() {
-        if (isRunningInsideVK() && window.vkBridge) {
+    // FIX-VK-INIT-SYNC: VKWebAppInit + subscribe вынесены из init() в отдельный метод.
+    // Критично: VK держит свой splash-экран, пока не получит VKWebAppInit. Раньше
+    // вызов уходил из init(), который теперь внутри async IIFE после P9-валидации —
+    // при медленном ответе Worker'а или CORS-глюке VK зависал на splash навсегда
+    // (на refresh воспроизводилось стабильно). Теперь handshake вызывается СИНХРОННО
+    // в boot-блоке до любых await. Идемпотентен через флаг _vkHandshakeDone.
+    initVKHandshake() {
+        if (PlatformBridge._vkHandshakeDone) return;
+        PlatformBridge._vkHandshakeDone = true;
+        if (!isRunningInsideVK() || !window.vkBridge) return;
+        try {
             window.vkBridge.send('VKWebAppInit').catch(() => {});
-            // Подписка на события жизненного цикла VK Mini Apps (требование правил VK п. 2.2.5)
-            try {
-                window.vkBridge.subscribe(event => {
-                    if (!event || !event.detail) return;
-                    const type = event.detail.type;
-                    if (type === 'VKWebAppViewHide') {
-                        pauseBgMusic();
-                        // FIX-VIEWHIDE-AUDIO: глушим Web Audio API целиком.
-                        // Раньше pauseBgMusic() останавливал только HTMLAudio-трек,
-                        // а процедурные SFX (playCosmicAscensionAudio, playTriumphFanfare)
-                        // продолжали звучать из свёрнутого приложения (нарушение п. 2.2.5).
-                        if (typeof aCtx !== 'undefined' && aCtx && aCtx.state === 'running') {
-                            try { aCtx.suspend(); } catch(e) {}
-                        }
-                        saveGame(true);
-                    } else if (type === 'VKWebAppViewRestore') {
-                        // Возврат из свёрнутого состояния: поднимаем контекст обратно
-                        if (typeof aCtx !== 'undefined' && aCtx && aCtx.state === 'suspended') {
-                            try { aCtx.resume(); } catch(e) {}
-                        }
-                        if (!gState.isMusicMuted) playBgMusic();
+            window.vkBridge.subscribe(event => {
+                if (!event || !event.detail) return;
+                const type = event.detail.type;
+                if (type === 'VKWebAppViewHide') {
+                    pauseBgMusic();
+                    if (typeof aCtx !== 'undefined' && aCtx && aCtx.state === 'running') {
+                        try { aCtx.suspend(); } catch(e) {}
                     }
-                });
-            } catch (e) {}
+                    saveGame(true);
+                } else if (type === 'VKWebAppViewRestore') {
+                    if (typeof aCtx !== 'undefined' && aCtx && aCtx.state === 'suspended') {
+                        try { aCtx.resume(); } catch(e) {}
+                    }
+                    if (!gState.isMusicMuted) playBgMusic();
+                }
+            });
+        } catch (e) {}
+    },
+
+    init() {
+        // VK handshake вызывается здесь как fallback (для standalone boot-сценариев),
+        // но в норме уже был вызван синхронно в boot-блоке engine.js ДО этого init.
+        this.initVKHandshake();
+        if (isRunningInsideVK() && window.vkBridge) {
             this.initVKCloudSync();
             this.checkReferralArrival();
         }
@@ -11415,6 +11430,12 @@ try {
     );
 
     initStageScaler();
+
+    // FIX-VK-INIT-SYNC: VK handshake СИНХРОННО, до любых await.
+    // Без этого VK держит свой splash («games») пока не получит VKWebAppInit,
+    // а P9-валидация уводит вызов в async IIFE — при медленном Worker'е
+    // VK зависает на splash навсегда. Метод идемпотентен через флаг.
+    PlatformBridge.initVKHandshake();
 
     // P9: асинхронная валидация launch params (fire-and-await в async IIFE).
     // loadGame() вызывается ПОСЛЕ получения результата, чтобы защититься от сценария
