@@ -718,10 +718,21 @@ const PlatformBridge = {
             return;
         }
 
-        // Ветка VK Bridge
+        // Ветка VK Bridge с защитой от зависания (Watchdog 10s)
         if (isRunningInsideVK() && window.vkBridge) {
+            let isResolved = false;
+            const watchdogTimer = setTimeout(() => {
+                if (!isResolved) {
+                    isResolved = true;
+                    handleFail(currentLang === 'RU' ? "Видео недоступно" : "Ad unavailable");
+                }
+            }, 10000);
+
             window.vkBridge.send('VKWebAppShowRewardedVideo')
                 .then(data => {
+                    if (isResolved) return;
+                    isResolved = true;
+                    clearTimeout(watchdogTimer);
                     resumeMusic();
                     if (data && data.result) {
                         if (typeof onSuccess === 'function') onSuccess();
@@ -730,6 +741,9 @@ const PlatformBridge = {
                     }
                 })
                 .catch(() => {
+                    if (isResolved) return;
+                    isResolved = true;
+                    clearTimeout(watchdogTimer);
                     handleFail(currentLang === 'RU' ? "Видео недоступно" : "Ad unavailable");
                 });
             return;
@@ -2473,15 +2487,25 @@ function closeCombatSimulation(multiplier = 1) {
 
     const modal = document.getElementById('battle-overlay-modal');
     const verdict = document.getElementById('combat-verdict-box');
-    if (modal) modal.style.display = 'none';
-    if (verdict) verdict.style.display = 'none';
+    const btnClose = document.getElementById('btn-battle-close');
+    const btnDouble = document.getElementById('btn-battle-double');
 
-    if (!activeCombatData) return;
+    if (!activeCombatData) {
+        if (modal) modal.style.display = 'none';
+        if (verdict) verdict.style.display = 'none';
+        return;
+    }
 
     const claimHandler = activeCombatData.onClaim;
-    activeCombatData = null;
 
     const finalizeAndSave = (m) => {
+        if (modal) modal.style.display = 'none';
+        if (verdict) verdict.style.display = 'none';
+        if (btnClose) btnClose.disabled = false;
+        if (btnDouble) btnDouble.disabled = false;
+
+        activeCombatData = null;
+
         if (typeof claimHandler === 'function') {
             try {
                 claimHandler(m);
@@ -2503,7 +2527,23 @@ function closeCombatSimulation(multiplier = 1) {
     };
 
     if (multiplier > 1) {
-        showPlatformRewarded(() => finalizeAndSave(2));
+        // Блокируем кнопки на время показа рекламы, но НЕ скрываем окно боя!
+        if (btnClose) btnClose.disabled = true;
+        if (btnDouble) btnDouble.disabled = true;
+
+        showPlatformRewarded(
+            () => {
+                finalizeAndSave(2);
+            },
+            () => {
+                // При ошибке рекламы мгновенно разблокируем кнопки: игрок может забрать базовую награду!
+                if (btnClose) btnClose.disabled = false;
+                if (btnDouble) btnDouble.disabled = false;
+                pushToast(currentLang === 'RU' 
+                    ? "Реклама недоступна. Заберите обычную награду" 
+                    : "Ad unavailable. Collect standard reward");
+            }
+        );
     } else {
         finalizeAndSave(1);
     }
@@ -5460,13 +5500,19 @@ function refillDungeonStaminaAd() {
     if ((gState.dungeonRefillsToday || 0) >= 3) {
         return pushToast(currentLang === 'RU' ? "Лимит пополнений энергии исчерпан (3/3)!" : "Daily refills limit reached (3/3)!");
     }
+    const btn = document.getElementById('btn-dung-refill');
+    if (btn) btn.disabled = true;
+
     showPlatformRewarded(() => {
+        if (btn) btn.disabled = false;
         gState.dungeonStamina = Math.min(10, (gState.dungeonStamina || 0) + 5);
         gState.dungeonRefillsToday = (gState.dungeonRefillsToday || 0) + 1;
         saveGame();
         renderDungeon();
         const eI = '<img src="assets/icons/icon_energy.webp" class="res-icon-inline icon-energy-glow" alt="E">';
         pushToast(currentLang === 'RU' ? `+5 ${eI} (${gState.dungeonRefillsToday}/3)!` : `+5 ${eI} (${gState.dungeonRefillsToday}/3)!`);
+    }, () => {
+        if (btn) btn.disabled = false;
     });
 }
 
@@ -6644,7 +6690,11 @@ function pushToast(msg) {
 }
 
 function watchAdReward() {
+    const btn = document.getElementById('btn-ad-footer');
+    if (btn) btn.disabled = true;
+
     showPlatformRewarded(() => {
+        if (btn) btn.disabled = false;
         playCoinSfx();
         let ticketsBonus = 0;
         if ((gState.adTicketsClaimedToday || 0) < 2) {
@@ -6661,6 +6711,8 @@ function watchAdReward() {
         pushToast(ticketsBonus > 0 ? `+${formatNumber(goldReward)} ${gI} • +2 ${tI}` : `+${formatNumber(goldReward)} ${gI}`);
         saveGame();
         renderUI();
+    }, () => {
+        if (btn) btn.disabled = false;
     });
 }
 
@@ -7499,7 +7551,16 @@ function claimDailyReward(mult = 1) {
         renderUI();
     };
 
-    if (mult > 1 && !isVipActive()) showPlatformRewarded(action);
+    const onAdFail = () => {
+        isClaimingDaily = false;
+        if (btnClaim) btnClaim.disabled = false;
+        if (btnDouble) btnDouble.disabled = false;
+        pushToast(currentLang === 'RU' 
+            ? "Реклама недоступна. Заберите обычную награду" 
+            : "Ad unavailable. Claim standard reward");
+    };
+
+    if (mult > 1 && !isVipActive()) showPlatformRewarded(action, onAdFail);
     else action();
 }
 
