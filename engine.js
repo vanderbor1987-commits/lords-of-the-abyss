@@ -7,10 +7,19 @@
    Full Monolith • No Cuts • 100% Bug-Free • Mobile/PC
    ========================================================== */
 
-// Надежное восстановление сохраненного языка без сброса на русский
+// Надежное восстановление сохраненного языка с приоритетом RU для платформы ВКонтакте
 const savedLangKey = typeof localStorage !== 'undefined' ? localStorage.getItem('lords_saved_language') : null;
+const urlParams = (typeof window !== 'undefined' && window.location) ? new URLSearchParams(window.location.search) : null;
+const isVkContext = typeof window !== 'undefined' && (
+    window.location.search.includes('vk_user_id') || 
+    window.location.search.includes('api_id') ||
+    (window.parent !== window && !window.location.search.includes('yandex'))
+);
+const vkLangParam = urlParams ? urlParams.get('vk_language') : null;
 const detectedSysLang = (typeof navigator !== 'undefined' && (navigator.language || navigator.userLanguage || '').toLowerCase().startsWith('ru')) ? 'RU' : 'EN';
-let currentLang = savedLangKey || detectedSysLang;
+// Если запуск происходит из VK — по умолчанию железно активируем русский язык (RU)
+const defaultPlatformLang = (isVkContext || vkLangParam === 'ru') ? 'RU' : detectedSysLang;
+let currentLang = savedLangKey || defaultPlatformLang;
 const SAVE_KEY = 'lords_core_v31_rebalance';
 let activeAssignExpId = null;
 let isAscendingInProgress = false;
@@ -7135,7 +7144,8 @@ function shareTriumphToWall(type, extra = '') {
 
 function addToBookmarksVK() {
     if (isRunningInsideVK()) {
-        window.vkBridge.send('VKWebAppAddToBookmarks')
+        // Официальный метод VK Bridge для добавления игры в меню слева и Избранное (п. 2.6.2 правил)
+        window.vkBridge.send('VKWebAppAddToFavorites')
             .then(data => {
                 if (data && data.result && !gState.hasBookmarked) {
                     gState.hasBookmarked = true;
@@ -7143,21 +7153,23 @@ function addToBookmarksVK() {
                     playCoinSfx();
                     triggerHaptic('upgrade');
                     const cI = '<img src="assets/icons/crystal.webp" class="res-icon-inline" alt="C">';
-                    pushToast(`+50 ${cI} за закладку!`);
+                    pushToast(currentLang === 'RU' ? `+50 ${cI} за добавление в избранное!` : `+50 ${cI} for adding to favorites!`);
                     saveGame();
                     renderPlatformRewardsUI();
                     renderUI();
                 }
             })
-            .catch(() => {});
+            .catch(err => {
+                console.warn('[VK Bridge] AddToFavorites error:', err);
+                pushToast(currentLang === 'RU' ? "Действие отменено или недоступно" : "Action cancelled or unavailable");
+            });
     } else {
         if (!gState.hasBookmarked) {
             gState.hasBookmarked = true;
             gState.crystals += 50;
             playCoinSfx();
             const cI = '<img src="assets/icons/crystal.webp" class="res-icon-inline" alt="C">';
-            // L2: локализация тоста закладки
-            pushToast(currentLang === 'RU' ? `+50 ${cI} Закладка сохранена!` : `+50 ${cI} Bookmark saved!`);
+            pushToast(currentLang === 'RU' ? `+50 ${cI} в избранное сохранено!` : `+50 ${cI} saved to favorites!`);
             saveGame();
             renderPlatformRewardsUI();
             renderUI();
@@ -7238,7 +7250,7 @@ function renderPlatformRewardsUI() {
         }
         if (bBtn) {
             if (gState.hasBookmarked) {
-                bBtn.innerText = currentLang === 'RU' ? '✔ В ЗАКЛАДКАХ' : '✔ BOOKMARKED';
+                bBtn.innerText = currentLang === 'RU' ? '✔ В ИЗБРАННОМ' : '✔ FAVORITED';
                 bBtn.disabled = true;
                 bBtn.style.background = '#273347';
             } else {

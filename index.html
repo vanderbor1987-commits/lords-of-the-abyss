@@ -1380,14 +1380,14 @@
                     <div class="settings-section-title" style="margin-top:6px;" data-i18n="settings_sec_titles">ДОСТУПНЫЕ ТИТУЛЫ:</div>
                     <div id="settings-title-selector-box" style="display:flex; flex-direction:column; gap:4px; max-height:115px; overflow-y:auto;"></div>
 
-                    <div class="settings-section-title" id="lbl-platform-bonuses" style="margin-top:6px;" data-i18n="settings_sec_titles">БОНУСЫ ПЛАТФОРМЫ:</div>
+                    <div class="settings-section-title" id="lbl-platform-bonuses" style="margin-top:6px;" data-i18n="settings_sec_platform">БОНУСЫ ПЛАТФОРМЫ:</div>
                     <div style="display:flex; flex-direction:column; gap:6px;">
                         <div class="building-card settings-row-card" id="row-perk-vk-bookmark" style="padding:6px 10px;">
-                            <span>Добавить игру в закладки</span>
+                            <span data-i18n="settings_perk_bookmark_lbl">Добавить в избранное (меню слева)</span>
                             <button class="btn-action" id="btn-perk-bookmark" style="font-size:11px; padding:4px 8px; display:inline-flex; align-items:center; gap:3px;" onclick="addToBookmarksVK()">+50 <img src="assets/icons/crystal.webp" class="res-icon-inline" alt="C"> ВЗЯТЬ</button>
                         </div>
                         <div class="building-card settings-row-card" id="row-perk-vk-homescreen" style="padding:6px 10px;">
-                            <span>Добавить на экран смартфона</span>
+                            <span data-i18n="settings_perk_homescreen_lbl">Добавить на экран смартфона</span>
                             <button class="btn-action" id="btn-perk-homescreen" style="font-size:11px; padding:4px 8px; display:inline-flex; align-items:center; gap:3px;" onclick="addToHomeScreenVK()">+50 <img src="assets/icons/crystal.webp" class="res-icon-inline" alt="C"> ВЗЯТЬ</button>
                         </div>
                         <div class="building-card settings-row-card" id="row-perk-vk-invite" style="padding:6px 10px;">
@@ -1395,7 +1395,7 @@
                             <button class="btn-action" id="btn-perk-vk-invite" style="font-size:11px; padding:4px 8px; display:inline-flex; align-items:center; gap:3px;" onclick="PlatformBridge.inviteFriendsVK()">+50 <img src="assets/icons/crystal.webp" class="res-icon-inline" alt="C"> ВЗЯТЬ</button>
                         </div>
                         <div class="building-card settings-row-card" id="row-perk-yandex-shortcut" style="padding:6px 10px; display:none;">
-                            <span>Иконка на рабочий стол</span>
+                            <span data-i18n="settings_perk_shortcut_lbl">Иконка на рабочий стол</span>
                             <button class="btn-action" id="btn-perk-yandex-shortcut" style="font-size:11px; padding:4px 8px; display:inline-flex; align-items:center; gap:3px;" onclick="PlatformBridge.promptYandexShortcut()">+50 <img src="assets/icons/crystal.webp" class="res-icon-inline" alt="C"> ВЗЯТЬ</button>
                         </div>
                     </div>
