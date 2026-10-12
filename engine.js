@@ -1674,6 +1674,58 @@ function clearAllFtueGuides() {
     document.querySelectorAll('.ftue-focus-target').forEach(el => el.classList.remove('ftue-focus-target'));
 }
 
+// FIX-FTUE-SUBVIEW-HEIGHT: пересчёт позиции подэкранов под Советником.
+// Раньше формула была `${44 + cardHeight + 8}px` с fallback 195px — на телефонах
+// не учитывала ни safe-area (notch), ни реальную высоту карточки с длинным лором.
+// Из-за этого Штаб/Алтарь/Арена/Бездна залезали верхом под Советника на 40-80px.
+//
+// Теперь замеряем РЕАЛЬНУЮ позицию низа карточки Советника на экране через
+// getBoundingClientRect — это автоматически учитывает:
+//   • safe-area-inset-top (notch/статус-бар iPhone)
+//   • фактическую высоту карточки с текущим текстом лора и задачи
+//   • transform: scale(--stage-scale) родительского viewport'а
+//
+// rAF-дебаунс: функция вызывается часто (из тика каждую секунду, из updateFtueFocus),
+// но замер делается один раз на следующий кадр. Безопасно от спама.
+let _ftueRecalcRafId = null;
+function recalcFtueSubviewTop() {
+    if (_ftueRecalcRafId) cancelAnimationFrame(_ftueRecalcRafId);
+    _ftueRecalcRafId = requestAnimationFrame(() => {
+        _ftueRecalcRafId = null;
+        const viewport = document.getElementById('app-viewport');
+        if (!viewport) return;
+
+        // FTUE завершён или куртина скрыта — возвращаем дефолт
+        if (isFtueCompleted()) {
+            viewport.style.setProperty('--ftue-subview-top', '44px');
+            return;
+        }
+
+        const advisorCard = document.getElementById('ftue-advisor-card');
+        if (!advisorCard) return;
+
+        // Извлекаем текущий масштаб сцены из CSS-переменной --stage-scale
+        let scale = 1;
+        try {
+            const raw = getComputedStyle(document.documentElement).getPropertyValue('--stage-scale');
+            scale = parseFloat(raw) || 1;
+            if (scale <= 0) scale = 1;
+        } catch (e) {}
+
+        const vpRect = viewport.getBoundingClientRect();
+        const cardRect = advisorCard.getBoundingClientRect();
+
+        // Нижняя граница карточки относительно верхнего края viewport'а.
+        // Делим на scale, чтобы вернуться из device-pixels в CSS-координаты viewport'а —
+        // именно они нужны для переменной --ftue-subview-top.
+        const bottomCss = (cardRect.bottom - vpRect.top) / scale;
+
+        // +8px защитный отступ, min 60px (страховка от невалидных замеров на первом кадре)
+        const subviewTop = Math.max(60, Math.ceil(bottomCss) + 8);
+        viewport.style.setProperty('--ftue-subview-top', `${subviewTop}px`);
+    });
+}
+
 function renderFtue() {
     const curtain = document.getElementById('ftue-curtain');
     const viewport = document.getElementById('app-viewport');
@@ -1713,6 +1765,11 @@ function renderFtue() {
     }
     const rText = typeof cfg.rewardText === 'function' ? cfg.rewardText() : cfg.rewardText;
     if (sReward) sReward.innerHTML = `${currentLang === 'RU' ? 'Награда' : 'Reward'}: ${rText}`;
+
+    // FIX-FTUE-SUBVIEW-HEIGHT: после замены текста лора/задачи высота карточки
+    // изменилась. Пересчитываем позицию подэкранов через rAF — гарантирует, что
+    // layout уже обновлён, и --ftue-subview-top применится к актуальной высоте.
+    recalcFtueSubviewTop();
 
     const isReady = cfg.req();
     if (btnClaim) {
@@ -1759,20 +1816,10 @@ function updateFtueFocus() {
     const cfg = FTUE_STEPS_CONFIG[step];
     if (!cfg) return;
 
-    // Динамический расчет высоты Советника для всех подэкранов через CSS-переменную
-    const viewport = document.getElementById('app-viewport');
-    const curtain = document.getElementById('ftue-curtain');
-    const isFtueVisible = curtain && curtain.style.display !== 'none' && !isFtueCompleted();
-
-    if (viewport) {
-        if (isFtueVisible) {
-            const advisorCard = document.getElementById('ftue-advisor-card');
-            const cardHeight = (advisorCard && advisorCard.offsetHeight > 50) ? advisorCard.offsetHeight : 195;
-            viewport.style.setProperty('--ftue-subview-top', `${44 + cardHeight + 8}px`);
-        } else {
-            viewport.style.setProperty('--ftue-subview-top', '44px');
-        }
-    }
+    // FIX-FTUE-SUBVIEW-HEIGHT: расчёт вынесен в recalcFtueSubviewTop() —
+    // замер через getBoundingClientRect с rAF-дебаунсом. Учитывает safe-area,
+    // реальную высоту карточки Советника и transform: scale viewport'а.
+    recalcFtueSubviewTop();
 
     if (cfg.req()) {
         document.getElementById('btn-ftue-claim')?.classList.add('ftue-focus-target');
@@ -10685,6 +10732,9 @@ function applyLanguage(lang) {
     if (typeof updateMainMenuUI === 'function') updateMainMenuUI();
     // FIX-BUILD-VERSION: перерисовка метки сборки при смене языка (СБОРКА ↔ BUILD)
     if (typeof renderBuildVersion === 'function') renderBuildVersion();
+    // FIX-FTUE-SUBVIEW-HEIGHT: при смене языка текст Советника меняет длину →
+    // высота карточки меняется → позицию подэкранов нужно пересчитать.
+    if (typeof recalcFtueSubviewTop === 'function') recalcFtueSubviewTop();
 }
 
 function toggleLanguage() {
