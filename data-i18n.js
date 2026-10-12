@@ -244,6 +244,13 @@ const I18N = {
         legal_community: 'Сообщество',
         vk_ladder_btn: 'ДРУЗЬЯ VK',
         referral_invite_lbl: 'Зов Бездны (Пригласить друзей)',
+        // FIX-4.2.10: строки Главного меню (bottom-sheet)
+        menu_headline: 'ГЛАВНОЕ МЕНЮ',
+        menu_to_citadel: 'В ЦИТАДЕЛЬ',
+        menu_profile: 'ПРОФИЛЬ И НАСТРОЙКИ',
+        menu_language: 'ЯЗЫК',
+        menu_sound: 'ЗВУК',
+        settings_reset_hint: 'Сброс прогресса доступен в ☰ Главном меню',
 
         // Алтарь
         altar_title: 'Врата Призыва Бездны',
@@ -348,10 +355,14 @@ const I18N = {
         hub_status_full: '10/10 ПОЛНО',
         hub_status_defeated: 'ПОВЕРЖЕН',
         hub_status_ready: 'УДАР ГОТОВ!',
-        settings_sec_platform: 'БОНУСЫ ПЛАТФОРМЫ:',
+        settings_sec_platform: 'ПЛАТФОРМА VK:',
         settings_perk_bookmark_lbl: 'Добавить в избранное (меню слева)',
         settings_perk_homescreen_lbl: 'Добавить на экран смартфона',
         settings_perk_shortcut_lbl: 'Иконка на рабочий стол',
+        // FIX-262: нейтральные ярлыки кнопок-действий вместо «+50 C ВЗЯТЬ».
+        // Награда за избранное и иконку убрана — п. 2.6.2 правил VK Mini Apps (закрытый перечень).
+        perk_add_btn: 'ДОБАВИТЬ',
+        perk_done_btn: '✔ ДОБАВЛЕНО',
         shop_ten_pulls_ribbon: '10 ПРИЗЫВОВ!',
         lbl_ins_garrison: 'ОБОРОНА СОПЕРНИКА <img src="assets/icons/army.webp" class="res-icon-inline" alt="Оборона">:',
         raid_boss_name: 'ДРЕВНИЙ ЛЕВИАФАН БЕЗДНЫ',
@@ -753,6 +764,12 @@ const I18N = {
         legal_community: 'Community',
         vk_ladder_btn: 'VK FRIENDS',
         referral_invite_lbl: 'Call of the Void (Invite Friends)',
+        menu_headline: 'MAIN MENU',
+        menu_to_citadel: 'TO CITADEL',
+        menu_profile: 'PROFILE & SETTINGS',
+        menu_language: 'LANGUAGE',
+        menu_sound: 'SOUND',
+        settings_reset_hint: 'Progress reset is available in ☰ Main Menu',
 
         // Altar
         altar_title: 'Void Summon Gates',
@@ -857,10 +874,12 @@ const I18N = {
         hub_status_full: '10/10 FULL',
         hub_status_defeated: 'DEFEATED',
         hub_status_ready: 'STRIKE READY!',
-        settings_sec_platform: 'PLATFORM BONUSES:',
+        settings_sec_platform: 'VK PLATFORM:',
         settings_perk_bookmark_lbl: 'Add to Favorites (left menu)',
         settings_perk_homescreen_lbl: 'Add to smartphone homescreen',
         settings_perk_shortcut_lbl: 'Desktop shortcut',
+        perk_add_btn: 'ADD',
+        perk_done_btn: '✔ ADDED',
         shop_ten_pulls_ribbon: '10 SUMMONS!',
         lbl_ins_garrison: 'ENEMY DEFENSE <img src="assets/icons/army.webp" class="res-icon-inline" alt="Defense">:',
         raid_boss_name: 'ANCIENT VOID LEVIATHAN',

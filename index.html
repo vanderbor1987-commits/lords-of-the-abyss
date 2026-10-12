@@ -125,6 +125,15 @@
                             <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"></path>
                         </svg>
                     </div>
+                    <!-- FIX-4.2.10: Главное меню. Закрывает требование п. 4.2.10 правил VK Mini Apps
+                         «Игра должна иметь полноценное стартовое меню... возможность вернуться в главное меню в любой момент». -->
+                    <div class="top-sys-btn" id="btn-main-menu" onclick="openMainMenu()" title="Главное меню">
+                        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--gold); display:block;">
+                            <line x1="3" y1="6" x2="21" y2="6"></line>
+                            <line x1="3" y1="12" x2="21" y2="12"></line>
+                            <line x1="3" y1="18" x2="21" y2="18"></line>
+                        </svg>
+                    </div>
                 </div>
             </div>
 
@@ -1408,11 +1417,11 @@
                     <div style="display:flex; flex-direction:column; gap:6px;">
                         <div class="building-card settings-row-card" id="row-perk-vk-bookmark" style="padding:6px 10px;">
                             <span data-i18n="settings_perk_bookmark_lbl">Добавить в избранное (меню слева)</span>
-                            <button class="btn-action" id="btn-perk-bookmark" style="font-size:11px; padding:4px 8px; display:inline-flex; align-items:center; gap:3px;" onclick="addToBookmarksVK()">+50 <img src="assets/icons/crystal.webp" class="res-icon-inline" alt="C"> ВЗЯТЬ</button>
+                            <button class="btn-action" id="btn-perk-bookmark" style="font-size:11px; padding:4px 8px; display:inline-flex; align-items:center; gap:3px; background:#273347; color:#cbd5e1;" onclick="addToBookmarksVK()">ДОБАВИТЬ</button>
                         </div>
                         <div class="building-card settings-row-card" id="row-perk-vk-homescreen" style="padding:6px 10px;">
                             <span data-i18n="settings_perk_homescreen_lbl">Добавить на экран смартфона</span>
-                            <button class="btn-action" id="btn-perk-homescreen" style="font-size:11px; padding:4px 8px; display:inline-flex; align-items:center; gap:3px;" onclick="addToHomeScreenVK()">+50 <img src="assets/icons/crystal.webp" class="res-icon-inline" alt="C"> ВЗЯТЬ</button>
+                            <button class="btn-action" id="btn-perk-homescreen" style="font-size:11px; padding:4px 8px; display:inline-flex; align-items:center; gap:3px; background:#273347; color:#cbd5e1;" onclick="addToHomeScreenVK()">ДОБАВИТЬ</button>
                         </div>
                         <div class="building-card settings-row-card" id="row-perk-vk-invite" style="padding:6px 10px;">
                             <span data-i18n="referral_invite_lbl">Зов Бездны (Пригласить друзей)</span>
@@ -1479,11 +1488,11 @@
                             </div>
                         </div>
 
-                        <div class="settings-danger-box" style="margin-top:6px;">
-                        <button class="btn-action btn-danger-reset" onclick="openHardResetModal()" data-i18n="settings_btn_reset">
-                            Сбросить прогресс
-                        </button>
-                    </div>
+                        <!-- FIX-4.2.10: кнопка «Сбросить прогресс» перенесена в Главное меню (единая точка
+                             danger-зоны). В Настройках оставлена только ссылка-намёк на меню. -->
+                        <div class="settings-danger-hint" style="margin-top:8px; text-align:center; font-size:11px; color:var(--text-muted); line-height:1.4;">
+                            <span data-i18n="settings_reset_hint">Сброс прогресса доступен в ☰ Главном меню</span>
+                        </div>
                 </div>
 
                 <button class="btn-action modal-full-btn" style="margin-top:4px;" onclick="saveAndCloseSettings()" data-i18n="settings_btn_save">СОХРАНИТЬ И ЗАКРЫТЬ</button>
@@ -1647,6 +1656,48 @@
                 <div class="legal-doc-updated" id="legal-doc-updated">Редакция от 12 октября 2026 года</div>
                 <div class="legal-doc-body" id="legal-doc-body"></div>
                 <button class="btn-action modal-full-btn" id="btn-legal-doc-close" onclick="closeLegalDocModal()" style="margin-top: 6px;">ЗАКРЫТЬ</button>
+            </div>
+        </div>
+
+        <!-- FIX-4.2.10: Главное меню (bottom-sheet). Открывается из HUD-кнопки ☰.
+             Пункт «В ЦИТАДЕЛЬ» скрывается, если игрок уже в Цитадели.
+             «Сброс прогресса» живёт только здесь (убран из Настроек). -->
+        <div class="modal-backdrop" id="main-menu-modal" style="display: none; align-items: flex-end; padding: 0;">
+            <div class="main-menu-sheet">
+                <div class="main-menu-header">
+                    <h3 class="modal-headline" data-i18n="menu_headline">ГЛАВНОЕ МЕНЮ</h3>
+                    <span class="modal-close-x" onclick="closeMainMenu()">✖</span>
+                </div>
+                <div class="main-menu-list">
+                    <button class="main-menu-item" id="mm-citadel" onclick="closeMainMenu(); navigate('citadel-view')">
+                        <span data-i18n="menu_to_citadel">В ЦИТАДЕЛЬ</span>
+                    </button>
+                    <button class="main-menu-item" onclick="closeMainMenu(); openSettingsModal()">
+                        <span data-i18n="menu_profile">ПРОФИЛЬ И НАСТРОЙКИ</span>
+                    </button>
+                    <button class="main-menu-item" onclick="toggleLanguage()">
+                        <span data-i18n="menu_language">ЯЗЫК</span>
+                        <span class="mm-value" id="mm-lang-val">RU</span>
+                    </button>
+                    <button class="main-menu-item" onclick="toggleMasterAudio()">
+                        <span data-i18n="menu_sound">ЗВУК</span>
+                        <span class="mm-value" id="mm-sound-val">ВКЛ</span>
+                    </button>
+                    <div class="main-menu-divider"></div>
+                    <button class="main-menu-item" onclick="closeMainMenu(); openLegalDocument('terms')">
+                        <span data-i18n="legal_terms">СОГЛАШЕНИЕ</span>
+                    </button>
+                    <button class="main-menu-item" onclick="closeMainMenu(); openLegalDocument('privacy')">
+                        <span data-i18n="legal_privacy">КОНФИДЕНЦИАЛЬНОСТЬ</span>
+                    </button>
+                    <button class="main-menu-item" onclick="closeMainMenu(); PlatformBridge.openExternalUrl('https://vk.ru/lordsabyss')">
+                        <span data-i18n="legal_community">СООБЩЕСТВО</span>
+                    </button>
+                    <div class="main-menu-divider"></div>
+                    <button class="main-menu-item danger" onclick="closeMainMenu(); openHardResetModal()">
+                        <span data-i18n="settings_btn_reset">СБРОСИТЬ ПРОГРЕСС</span>
+                    </button>
+                </div>
             </div>
         </div>
 

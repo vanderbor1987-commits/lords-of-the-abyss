@@ -942,6 +942,56 @@ function closeLegalDocModal() {
     if (m) m.style.display = 'none';
 }
 
+/* ==========================================================
+   FIX-4.2.10: ГЛАВНОЕ МЕНЮ (bottom-sheet)
+   Закрывает требование п. 4.2.10 правил VK Mini Apps: «Игра должна иметь полноценное
+   стартовое меню... возможность вернуться в главное меню игры в любой момент».
+   Меню заблокировано во время FTUE (кнопка скрыта CSS) и во время активного боя.
+   ========================================================== */
+function openMainMenu() {
+    // FTUE: не даём прервать обучение (подстраховка к CSS-правилу .ftue-running #btn-main-menu)
+    if (!isFtueCompleted()) return;
+
+    // Бой: во время активного боя и при открытом вердикте меню не должно перекрывать стол
+    const battleOverlay = document.getElementById('battle-overlay-modal');
+    if (battleOverlay && battleOverlay.style.display === 'flex') {
+        return pushToast(currentLang === 'RU' ? 'Меню недоступно во время боя' : 'Menu locked during combat');
+    }
+
+    updateMainMenuUI();
+    const m = document.getElementById('main-menu-modal');
+    if (m) m.style.display = 'flex';
+    playSfx(480, 'sine', 0.05);
+}
+
+function closeMainMenu() {
+    const m = document.getElementById('main-menu-modal');
+    if (m) m.style.display = 'none';
+}
+
+// Синхронизация динамических значений меню (язык, звук, скрытие «В ЦИТАДЕЛЬ»).
+// Вызывается при открытии меню, при смене языка (applyLanguage) и при mute-тумблере.
+function updateMainMenuUI() {
+    const mmLang = document.getElementById('mm-lang-val');
+    if (mmLang) mmLang.innerText = currentLang;
+
+    const mmSound = document.getElementById('mm-sound-val');
+    if (mmSound) {
+        const isMuted = (gState.isAudioMuted && gState.isMusicMuted);
+        mmSound.innerText = isMuted
+            ? (currentLang === 'RU' ? 'ВЫКЛ' : 'OFF')
+            : (currentLang === 'RU' ? 'ВКЛ' : 'ON');
+    }
+
+    // «В ЦИТАДЕЛЬ» скрываем, если игрок уже на главном экране — не показываем неактивное действие
+    const citadelBtn = document.getElementById('mm-citadel');
+    if (citadelBtn) {
+        const activeView = document.querySelector('.view-tab.active');
+        const alreadyInCitadel = !activeView || activeView.id === 'citadel-view';
+        citadelBtn.style.display = alreadyInCitadel ? 'none' : 'flex';
+    }
+}
+
 function tryTriggerInterstitialAd() {
     // Принудительная межстраничная реклама полностью отключена для максимального Retention
 }
@@ -6841,6 +6891,8 @@ function toggleMasterAudio() {
     }
     saveGame();
     updateSettingsAudioBtnText();
+    // FIX-4.2.10: синхронизация индикатора «ЗВУК» в Главном меню (если оно открыто)
+    if (typeof updateMainMenuUI === 'function') updateMainMenuUI();
 }
 
 function playBgMusic() {
@@ -7386,21 +7438,21 @@ function shareTriumphToWall(type, extra = '') {
     }
 }
 
+// FIX-262-BOOKMARK: убрана награда +50 C за «Добавить в избранное».
+// Обоснование: п. 2.6.2 правил VK Mini Apps (ред. 17.03.2026) содержит ЗАКРЫТЫЙ перечень
+// соцмеханик, за которые разрешено выдавать бонусы. «Добавить в избранное» и «Добавить
+// на главный экран» в этом перечне ОТСУТСТВУЮТ — выдача награды = прямое нарушение.
+// Кнопка оставлена как информирующее действие; hasBookmarked нужен только для UI-статуса.
 function addToBookmarksVK() {
     if (isRunningInsideVK()) {
-        // Официальный метод VK Bridge для добавления игры в меню слева и Избранное (п. 2.6.2 правил)
         window.vkBridge.send('VKWebAppAddToFavorites')
             .then(data => {
                 if (data && data.result && !gState.hasBookmarked) {
                     gState.hasBookmarked = true;
-                    gState.crystals += 50;
-                    playCoinSfx();
                     triggerHaptic('upgrade');
-                    const cI = '<img src="assets/icons/crystal.webp" class="res-icon-inline" alt="C">';
-                    pushToast(currentLang === 'RU' ? `+50 ${cI} за добавление в избранное!` : `+50 ${cI} for adding to favorites!`);
+                    pushToast(currentLang === 'RU' ? 'Игра добавлена в избранное!' : 'Added to favorites!');
                     saveGame();
                     renderPlatformRewardsUI();
-                    renderUI();
                 }
             })
             .catch(err => {
@@ -7410,45 +7462,37 @@ function addToBookmarksVK() {
     } else {
         if (!gState.hasBookmarked) {
             gState.hasBookmarked = true;
-            gState.crystals += 50;
-            playCoinSfx();
-            const cI = '<img src="assets/icons/crystal.webp" class="res-icon-inline" alt="C">';
-            pushToast(currentLang === 'RU' ? `+50 ${cI} в избранное сохранено!` : `+50 ${cI} saved to favorites!`);
+            triggerHaptic('tap');
+            pushToast(currentLang === 'RU' ? 'Игра в избранном!' : 'Game is in favorites!');
             saveGame();
             renderPlatformRewardsUI();
-            renderUI();
         }
     }
 }
 
+// FIX-262-HOMESCREEN: убрана награда +50 C за «Добавить на главный экран».
+// Причина идентична FIX-262-BOOKMARK: п. 2.6.2 правил VK Mini Apps не разрешает
+// выдачу бонусов за эту соцмеханику. Кнопка оставлена как действие.
 function addToHomeScreenVK() {
     if (isRunningInsideVK()) {
         window.vkBridge.send('VKWebAppAddToHomeScreen')
             .then(data => {
                 if (data && data.result && !gState.hasAddedToHome) {
                     gState.hasAddedToHome = true;
-                    gState.crystals += 50;
-                    playCoinSfx();
                     triggerHaptic('upgrade');
-                    const cI = '<img src="assets/icons/crystal.webp" class="res-icon-inline" alt="C">';
-                    pushToast(`+50 ${cI} за иконку на экране!`);
+                    pushToast(currentLang === 'RU' ? 'Иконка добавлена на экран!' : 'Icon added to home!');
                     saveGame();
                     renderPlatformRewardsUI();
-                    renderUI();
                 }
             })
             .catch(() => {});
     } else {
         if (!gState.hasAddedToHome) {
             gState.hasAddedToHome = true;
-            gState.crystals += 50;
-            playCoinSfx();
-            const cI = '<img src="assets/icons/crystal.webp" class="res-icon-inline" alt="C">';
-            // L3: локализация тоста «на экран смартфона»
-            pushToast(currentLang === 'RU' ? `+50 ${cI} Иконка добавлена!` : `+50 ${cI} Icon added to home!`);
+            triggerHaptic('tap');
+            pushToast(currentLang === 'RU' ? 'Иконка добавлена!' : 'Icon added!');
             saveGame();
             renderPlatformRewardsUI();
-            renderUI();
         }
     }
 }
@@ -7492,28 +7536,34 @@ function renderPlatformRewardsUI() {
                 invBtn.style.color = '#0b0f17';
             }
         }
+        // FIX-262-UI: нейтральные серо-стальные кнопки-действия. Убраны «+50 C», золотая
+        // и фиолетовая окраски — они читались как «бонус за соцмеханику» (нарушение п. 2.6.2).
+        const addLabel = currentLang === 'RU' ? 'ДОБАВИТЬ' : 'ADD';
+        const doneLabel = currentLang === 'RU' ? '✔ ДОБАВЛЕНО' : '✔ ADDED';
         if (bBtn) {
             if (gState.hasBookmarked) {
-                bBtn.innerText = currentLang === 'RU' ? '✔ В ИЗБРАННОМ' : '✔ FAVORITED';
+                bBtn.innerText = doneLabel;
                 bBtn.disabled = true;
                 bBtn.style.background = '#273347';
+                bBtn.style.color = '#64748b';
             } else {
-                bBtn.innerHTML = `+50 ${cI} ${currentLang === 'RU' ? 'ВЗЯТЬ' : 'CLAIM'}`;
+                bBtn.innerText = addLabel;
                 bBtn.disabled = false;
-                bBtn.style.background = 'var(--gold)';
-                bBtn.style.color = '#0b0f17';
+                bBtn.style.background = '#273347';
+                bBtn.style.color = '#cbd5e1';
             }
         }
         if (hBtn) {
             if (gState.hasAddedToHome) {
-                hBtn.innerText = currentLang === 'RU' ? '✔ НА ЭКРАНЕ' : '✔ ON SCREEN';
+                hBtn.innerText = doneLabel;
                 hBtn.disabled = true;
                 hBtn.style.background = '#273347';
+                hBtn.style.color = '#64748b';
             } else {
-                hBtn.innerHTML = `+50 ${cI} ${currentLang === 'RU' ? 'ВЗЯТЬ' : 'CLAIM'}`;
+                hBtn.innerText = addLabel;
                 hBtn.disabled = false;
-                hBtn.style.background = 'var(--crystal)';
-                hBtn.style.color = '#fff';
+                hBtn.style.background = '#273347';
+                hBtn.style.color = '#cbd5e1';
             }
         }
     }
@@ -10525,6 +10575,8 @@ function applyLanguage(lang) {
     renderCodexUI();
     renderFtue();
     renderUI();
+    // FIX-4.2.10: обновление динамических значений Главного меню (значения вне data-i18n)
+    if (typeof updateMainMenuUI === 'function') updateMainMenuUI();
 }
 
 function toggleLanguage() {
@@ -10952,6 +11004,7 @@ function initHardwareBackNavigation() {
             { id: 'settings-modal', close: closeSettingsModal },
             { id: 'building-modal', close: closeBuildingModal },
             { id: 'battle-hub-modal', close: closeBattleHubModal },
+            { id: 'main-menu-modal', close: closeMainMenu },
             { id: 'daily-calendar-modal', close: closeDailyCalendarModal },
             { id: 'lucky-wheel-modal', close: closeLuckyWheelModal },
             { id: 'arena-ladder-modal', close: closeArenaLadderModal },
