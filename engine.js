@@ -194,6 +194,19 @@ const PlatformBridge = {
     init() {
         if (isRunningInsideVK() && window.vkBridge) {
             window.vkBridge.send('VKWebAppInit').catch(() => {});
+            // Подписка на события жизненного цикла VK Mini Apps (требование правил VK п. 2.2.5)
+            try {
+                window.vkBridge.subscribe(event => {
+                    if (!event || !event.detail) return;
+                    const type = event.detail.type;
+                    if (type === 'VKWebAppViewHide') {
+                        pauseBgMusic();
+                        saveGame(true);
+                    } else if (type === 'VKWebAppViewRestore') {
+                        if (!gState.isMusicMuted) playBgMusic();
+                    }
+                });
+            } catch (e) {}
             this.initVKCloudSync();
         }
 
@@ -711,6 +724,22 @@ function formatNumber(num) {
     const i = Math.floor(Math.log10(num) / 3);
     const compactVal = parseFloat((num / Math.pow(10, i * 3)).toFixed(1));
     return `${compactVal}${suffixes[i] || ''}`;
+}
+
+// Форматирование цен магазина: для каталога VK Games строго в Голосах (п. 4.2.2 правил)
+function formatPriceForPlatform(priceRub) {
+    if (isRunningInsideVK()) {
+        const voices = Math.max(1, Math.round(priceRub / 10));
+        if (currentLang === 'RU') {
+            const mod10 = voices % 10;
+            const mod100 = voices % 100;
+            if (mod10 === 1 && mod100 !== 11) return `${voices} голос`;
+            if ([2, 3, 4].includes(mod10) && ![12, 13, 14].includes(mod100)) return `${voices} голоса`;
+            return `${voices} голосов`;
+        }
+        return `${voices} ${voices === 1 ? 'Voice' : 'Voices'}`;
+    }
+    return `${priceRub} ${currentLang === 'RU' ? 'руб.' : 'RUB'}`;
 }
 
 // U16: кэш статичных DOM-элементов. Тик и рендеры дёргают getElementById на горячих
@@ -2670,10 +2699,8 @@ function updateInspectUpgradeButton() {
         return;
     }
 
-    // G3-FIX-2: герой ровно на 200 — всегда показываем «ВОЙТИ В МАСТЕРСТВО»,
-    // независимо от флага isMasteryAwakened. Флаг нужен только для одноразового эпик-тоста
-    // при первом переходе, но не для логики UI: пока lvl === 200, герой ещё не в мастерстве.
-    // Если денег меньше стоимости M1 — кнопка серая с ценой (пересчитывается в тике).
+    // Герой ровно на 200 — показываем «ВОЙТИ В МАСТЕРСТВО»
+    // Если денег меньше стоимости M1 — кнопка серая с динамической ценой
     if (card.lvl === MAX_BASE_LVL) {
         const m1Cost = getHeroLevelUpgradeCost(MAX_BASE_LVL);
         const canAffordM1 = (gState.gold || 0) >= m1Cost;
@@ -2698,39 +2725,7 @@ function updateInspectUpgradeButton() {
         return;
     }
 
-    // Обычная прокачка: сбрасываем возможные «остаточные» стили от мастерства
-    btn.style.color = '';
-    btn.style.boxShadow = '';
-    btn.style.background = 'linear-gradient(180deg, #d97706 0%, #b45309 100%)';
-    btn.style.borderColor = '#f59e0b';
-
-    // G3: Герой ровно на 200 и ещё не пробуждён — показываем специальную кнопку.
-    // Скрываем множитель (нечего множить), кнопка открывает модалку подтверждения.
-    // G3-fix: кнопка заблокирована, если золота не хватает даже на M1.
-    if (card.lvl === MAX_BASE_LVL && !isMasteryAwakened(activeInspectHeroId)) {
-        const m1Cost = getHeroLevelUpgradeCost(MAX_BASE_LVL);
-        const canAffordM1 = (gState.gold || 0) >= m1Cost;
-
-        btn.disabled = !canAffordM1;
-        if (canAffordM1) {
-            btn.style.background = 'linear-gradient(180deg, #7c3aed 0%, #5b21b6 100%)';
-            btn.style.borderColor = '#a855f7';
-            btn.style.color = '#fff';
-            btn.style.boxShadow = '0 0 14px rgba(168, 85, 247, 0.55)';
-            btn.innerHTML = currentLang === 'RU' ? '★ ВОЙТИ В МАСТЕРСТВО ★' : '★ ENTER MASTERY ★';
-        } else {
-            btn.style.background = '#273347';
-            btn.style.borderColor = '#334155';
-            btn.style.color = 'var(--text-muted)';
-            btn.style.boxShadow = 'none';
-            btn.innerHTML = currentLang === 'RU'
-                ? `★ МАСТЕРСТВО (нужно ${formatNumber(m1Cost)} ${gI})`
-                : `★ MASTERY (need ${formatNumber(m1Cost)} ${gI})`;
-        }
-        if (cycleBtn) cycleBtn.style.display = 'none';
-        return;
-    }
-
+    // Обычная прокачка: сбрасываем возможные стили от мастерства
     btn.style.color = '';
     btn.style.boxShadow = '';
     btn.style.background = 'linear-gradient(180deg, #d97706 0%, #b45309 100%)';
@@ -9600,7 +9595,7 @@ function renderUI() {
             starterBtn.style.opacity = '0.5';
         } else {
             starterBtn.disabled = false;
-            starterBtn.innerText = I18N[currentLang].shop_btn_price.replace('{p}', 149);
+            starterBtn.innerText = formatPriceForPlatform(149);
             starterBtn.style.opacity = '1';
         }
     }
@@ -10016,13 +10011,12 @@ function applyLanguage(lang) {
     const wheelHint = document.getElementById('lbl-element-wheel-hint');
     if (wheelHint) wheelHint.innerHTML = I18N[currentLang]?.element_wheel_hint_full || '<img src="assets/icons/elem_light.webp" class="res-icon-inline" alt="Light"> Light > <img src="assets/icons/elem_undead.webp" class="res-icon-inline" alt="Undead"> Undead > <img src="assets/icons/elem_chaos.webp" class="res-icon-inline" alt="Chaos"> Chaos > <img src="assets/icons/elem_demon.webp" class="res-icon-inline" alt="Demons"> Demons > <img src="assets/icons/elem_light.webp" class="res-icon-inline" alt="Light"> (+15% CP)';
 
-    // 4. Динамический перевод цен покупок на кнопках магазина (руб. / RUB)
-    const curUnit = currentLang === 'RU' ? 'руб.' : 'RUB';
+    // 4. Динамический перевод цен покупок на кнопках магазина (Голоса для VK / рубли для web)
     document.querySelectorAll('.shop-tile-btn, .shop-buy-btn').forEach(btn => {
         const onclickAttr = btn.getAttribute('onclick') || '';
         const match = onclickAttr.match(/,\s*(\d+)\)/);
         if (match && match[1]) {
-            btn.innerText = `${match[1]} ${curUnit}`;
+            btn.innerText = formatPriceForPlatform(Number(match[1]));
         }
     });
 

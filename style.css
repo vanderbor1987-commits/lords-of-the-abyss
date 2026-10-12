@@ -5845,6 +5845,27 @@ img[src*="trophy.webp"] {
     transition: opacity 0.5s cubic-bezier(0.2, 0.8, 0.2, 1), visibility 0.5s ease;
 }
 
+/* Возрастной бейдж 16+ в верхнем левом углу предзагрузчика */
+.preloader-age-badge {
+    position: absolute;
+    top: 16px;
+    left: 16px;
+    background: rgba(16, 22, 34, 0.7);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    border: 1.5px solid rgba(245, 176, 65, 0.5);
+    color: var(--gold);
+    font-family: 'Cinzel', serif;
+    font-size: 11.5px;
+    font-weight: 900;
+    padding: 5px 10px;
+    border-radius: 6px;
+    letter-spacing: 1px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+    z-index: 100000;
+    pointer-events: none;
+}
+
 /* Полупрозрачная кнопка языка в правом верхнем углу предзагрузчика */
 .preloader-lang-btn {
     position: absolute;
@@ -5864,6 +5885,28 @@ img[src*="trophy.webp"] {
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
     transition: transform 0.08s ease, border-color 0.15s ease, background 0.15s ease;
     z-index: 100000;
+}
+
+/* Ссылки на правовую документацию внизу Настроек */
+.settings-legal-links-row {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 8px;
+    margin-top: 8px;
+    font-size: 11px;
+    color: var(--text-muted);
+}
+
+.settings-legal-link {
+    color: var(--text-muted);
+    text-decoration: underline;
+    text-underline-offset: 3px;
+    transition: color 0.15s ease;
+}
+
+.settings-legal-link:hover {
+    color: var(--gold);
 }
 .preloader-lang-btn:active {
     transform: scale(0.92);

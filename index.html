@@ -27,6 +27,9 @@
     <div id="app-viewport">
         <!-- ЕДИНЫЙ ГОТИЧЕСКИЙ ЭКРАН ЗАГРУЗКИ И СТАРТА -->
         <div id="app-preloader">
+            <!-- Возрастной ценз (требование правил VK Mini Apps п. 2.1.5) -->
+            <div class="preloader-age-badge" id="preloader-age-badge" title="Возрастное ограничение">16+</div>
+
             <!-- Полупрозрачная кнопка языка в правом верхнем углу -->
             <button class="preloader-lang-btn" id="btn-preloader-lang" onclick="togglePreloaderLanguage()">RU</button>
 
@@ -1455,7 +1458,14 @@
                 </div>
 
                 <button class="btn-action modal-full-btn" style="margin-top:4px;" onclick="saveAndCloseSettings()" data-i18n="settings_btn_save">СОХРАНИТЬ И ЗАКРЫТЬ</button>
-                <div style="text-align: center; color: var(--border-metal-light); font-size: 10px; font-weight: 800; margin-top: 10px; letter-spacing: 0.5px;">DEVELOPED BY VANDER BOR</div>
+                <div class="settings-legal-links-row">
+                    <a href="terms.html" target="_blank" rel="noopener" class="settings-legal-link" data-i18n="legal_terms">Соглашение</a>
+                    <span>•</span>
+                    <a href="privacy.html" target="_blank" rel="noopener" class="settings-legal-link" data-i18n="legal_privacy">Конфиденциальность</a>
+                    <span>•</span>
+                    <a href="https://vk.ru/lordsabyss" target="_blank" rel="noopener" class="settings-legal-link" data-i18n="legal_community">Сообщество</a>
+                </div>
+                <div style="text-align: center; color: var(--border-metal-light); font-size: 11px; font-weight: 800; margin-top: 8px; letter-spacing: 0.5px;">DEVELOPED BY VANDER BOR</div>
             </div>
         </div>
 

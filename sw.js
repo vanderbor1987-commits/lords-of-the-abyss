@@ -9,6 +9,8 @@ const CACHE_NAME = 'lords-abyss-v3.4';
 const STATIC_ASSETS = [
     './',
     'index.html',
+    'terms.html',
+    'privacy.html',
     'style.css',
     'engine.js',
     'data-heroes.js',
@@ -58,8 +60,6 @@ const STATIC_ASSETS = [
     'assets/icons/shop_tickets_3.webp',
     'assets/icons/shop_gold.webp',
     'assets/icons/shop_relics.webp',
-    'assets/icons/icon_ad.webp',
-    'assets/icons/icon_hourglass.webp',
     'assets/cards/card_back_common.webp',
     'assets/cards/card_back_rare.webp',
     'assets/cards/card_back_epic.webp',

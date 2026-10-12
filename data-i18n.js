@@ -232,8 +232,10 @@ const I18N = {
         slot_lvlup_prefix: '+1 Ур.',
         exp_resonance_badge: 'РЕЗОНАНС +10%',
         exp_auto_btn: 'АВТО',
-        exp_chance_relic: '(Шанс Реликвии)',
         exp_speedup_btn_label: 'Ускорить',
+        legal_terms: 'Соглашение',
+        legal_privacy: 'Конфиденциальность',
+        legal_community: 'Сообщество',
 
         // Алтарь
         altar_title: 'Врата Призыва Бездны',
@@ -731,8 +733,10 @@ const I18N = {
         slot_lvlup_prefix: '+1 Lvl',
         exp_resonance_badge: 'RESONANCE +10%',
         exp_auto_btn: 'AUTO',
-        exp_chance_relic: '(Relic Chance)',
         exp_speedup_btn_label: 'Speedup',
+        legal_terms: 'Terms of Use',
+        legal_privacy: 'Privacy Policy',
+        legal_community: 'Community',
 
         // Altar
         altar_title: 'Void Summon Gates',
