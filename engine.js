@@ -37,7 +37,7 @@ const BUILD_DATE = '12.10.2026';
 // Пока константа пустая — валидация пропускается (graceful no-op),
 // что безопасно для standalone/GH Pages, но НЕ закрывает п. 1.2.2.
 // ==========================================================
-const VK_VALIDATOR_URL = ''; // ← вставить URL worker'а после деплоя
+const VK_VALIDATOR_URL = 'https://lota-vk-validator.vanderbor1987.workers.dev';
 
 let activeAssignExpId = null;
 let isAscendingInProgress = false;
