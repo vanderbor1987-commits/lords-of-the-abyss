@@ -4285,14 +4285,32 @@ function generateArenaRivals() {
         ];
     }
 
-    // Алгоритмическая гарантия: три строго различных ранга, исключающих ранг самого игрока
+    // Алгоритмическая гарантия: три строго различных ранга, исключающих ранг самого игрока.
+    // FIX-ARENA-HANG-2: while с «пинг-понгом» (уменьшить/увеличить) может зацикливаться,
+    // если кандидат окружён занятыми рангами с обеих сторон. Заменили на безопасный
+    // восходящий скан с жёстким лимитом попыток и fallback-веткой.
     const uniqueRanks = [];
     targetRanks.forEach(r => {
         let candidate = Math.max(1, Math.min(1000, Math.floor(r)));
         if (candidate === myRank) candidate = candidate > 1 ? candidate - 1 : candidate + 1;
-        while (candidate === myRank || uniqueRanks.includes(candidate)) {
-            candidate = candidate > 1 ? candidate - 1 : candidate + 1;
+
+        const occupied = new Set([myRank, ...uniqueRanks]);
+        let scanAttempts = 0;
+        while (occupied.has(candidate) && scanAttempts < 1000) {
+            scanAttempts++;
+            candidate++;
         }
+        // Fallback: если восходящий скан не нашёл свободный слот (теоретически невозможно
+        // при 1000 позициях), пробуем ниже игрока на случай плотного заполнения.
+        if (occupied.has(candidate)) {
+            candidate = Math.max(1, myRank - 20);
+            let fallbackAttempts = 0;
+            while (occupied.has(candidate) && fallbackAttempts < 1000) {
+                fallbackAttempts++;
+                candidate = candidate > 1 ? candidate - 1 : candidate + 1;
+            }
+        }
+
         uniqueRanks.push(candidate);
     });
 
@@ -4607,21 +4625,41 @@ function inspectLadderRank(rank) {
 
 // MAJOR-M5: reentrancy-guard блокирует быстрый двойной тап по кнопке «В БОЙ»,
 // который списывал 2 билета до открытия оверлея боя.
+// FIX-ARENA-STUCK: добавлен safety-net auto-reset через 5 секунд. Если callback боя
+// не снял флаг (закрытый verdict-overlay, ранний return и т.п.) — игрок не залипает,
+// флаг сбрасывается сам. Это устраняет ситуацию «после реванша кнопка В БОЙ молчит».
 let isArenaCombatStarting = false;
+let arenaCombatGuardTimer = null;
 function startArenaCombatByIndex(index) {
     if (isArenaCombatStarting) return;
     isArenaCombatStarting = true;
 
+    // Safety-net: безусловный сброс флага через 5 секунд, если он всё ещё стоит.
+    clearTimeout(arenaCombatGuardTimer);
+    arenaCombatGuardTimer = setTimeout(() => {
+        if (isArenaCombatStarting) {
+            console.warn('[Arena] Combat guard auto-reset (safety-net).');
+            isArenaCombatStarting = false;
+        }
+    }, 5000);
+
     const rival = cachedArenaRivals[index];
     if (!rival) {
         isArenaCombatStarting = false;
+        clearTimeout(arenaCombatGuardTimer);
         return;
     }
     startActualCombatWithRival(rival);
 }
 
 function startActualCombatWithRival(rival) {
-    if ((gState.tickets || 0) < 1) return pushToast(currentLang === 'RU' ? "Нет билетов!" : "No tickets!");
+    // FIX-ARENA-STUCK: при раннем выходе (нет билетов) гарантированно снимаем guard —
+    // иначе следующий клик по «В БОЙ» молча съедался бы до конца сессии.
+    if ((gState.tickets || 0) < 1) {
+        isArenaCombatStarting = false;
+        clearTimeout(arenaCombatGuardTimer);
+        return pushToast(currentLang === 'RU' ? "Нет билетов!" : "No tickets!");
+    }
     
     // Билет списывается всегда на входе в бой (сохраняем ценность билетов в Магазине!)
     gState.tickets--;
@@ -4644,7 +4682,9 @@ function startActualCombatWithRival(rival) {
     launchVisualCombat(gState.attackFormation, rival, 'arena', (isWin, setClaimHandler) => {
             // MAJOR-M5: снимаем guard сразу на входе в callback — VIP-ветка вызывает его
             // синхронно, визуальная — по завершении боя. В обоих случаях блокировка снята корректно.
+            // FIX-ARENA-STUCK: заодно гасим safety-net таймер, чтобы он не сработал зря.
             isArenaCombatStarting = false;
+            clearTimeout(arenaCombatGuardTimer);
             const trIcon = '<img src="assets/icons/trophy.webp" class="res-icon-inline" style="width:14px; height:14px;" alt="Кубок">';
 
         if (isWin) {
@@ -4667,10 +4707,22 @@ function startActualCombatWithRival(rival) {
                                 .filter(Boolean);
                             const myNewRank = calculatePlayerRank();
                             let newRank = Math.max(1, myNewRank - (rivIdx === 0 ? 3 : (rivIdx === 1 ? 2 : 1)));
-                            
-                            // Гарантируем, что новый ранг не дублирует оставшихся двух соперников и игрока
-                            while (newRank === myNewRank || otherRanks.includes(newRank)) {
-                                newRank = newRank > 1 ? newRank - 1 : newRank + 1;
+
+                            // FIX-ARENA-HANG: раньше здесь стоял while, который в сценарии
+                            // «игрок #3 бьёт соперника #4» зацикливался бесконечно
+                            // (newRank метался между 1 и 2, оба заняты оставшимися соперниками),
+                            // вешая main thread игры намертво. Теперь — безопасный восходящий
+                            // скан с жёстким лимитом итераций. Занятые ранги пропускаем.
+                            const occupiedRanks = new Set([myNewRank, ...otherRanks]);
+                            let scanAttempts = 0;
+                            while (occupiedRanks.has(newRank) && scanAttempts < 1000) {
+                                scanAttempts++;
+                                newRank++;
+                            }
+                            // Отказоустойчивый fallback: если за 1000 шагов не нашли свободный ранг
+                            // (что практически невозможно при 1000 слотах ладдера), отступаем выше игрока.
+                            if (occupiedRanks.has(newRank)) {
+                                newRank = myNewRank + 10;
                             }
 
                             const newBot = getBotByRank(newRank);
@@ -7408,7 +7460,13 @@ function openBuyConfirm(itemKey, priceRub) {
     if (bDesc) bDesc.innerText = `${pendingBuyItem.title} (${priceRub} ${currentLang === 'RU' ? 'руб.' : 'RUB'})?`;
     if (bBtn) {
         bBtn.innerText = `${priceRub} ${currentLang === 'RU' ? 'руб.' : 'RUB'}`;
-        bBtn.onclick = executePurchase;
+        // FIX-STANDALONE-BUY: при прямой привязке `bBtn.onclick = executePurchase`
+        // браузер передаёт в функцию event-объект первым аргументом, и он попадает
+        // в itemKeyOverride. Проверка `if (!key)` его пропускает (event truthy),
+        // pendingBuyItem обнуляется, а все ветки SHOP_ITEMS_CATALOG[key] пролетают
+        // мимо — товар не начисляется, но первый-покупка-подарок выдаётся.
+        // Фикс: фиксируем itemKey в замыкании явно, как это уже сделано в VK/Yandex ветке.
+        bBtn.onclick = () => executePurchase(itemKey);
     }
     const m = document.getElementById('buy-modal');
     if (m) m.style.display = 'flex';
