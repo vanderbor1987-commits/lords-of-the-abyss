@@ -34,6 +34,7 @@ let lastCelebratedHeroName = '';
 
 let gState = {
     saveVersion: 31,
+    hasAcceptedTerms: false, // P8: флаг принятия соглашения при первом запуске (п. 1.1.4 правил VK Mini Apps)
     playerName: 'Duke Valdor',
     gold: 1000,
     crystals: 30,
@@ -10060,8 +10061,26 @@ function togglePreloaderLanguage() {
     }
 }
 
+// P8: переключение чекбокса соглашения. Флаг сохраняется мгновенно, чтобы состояние
+// персистировалось между сессиями (игрок отметил → закрыл таб → вернулся → чекбокс уже стоит).
+function togglePreloaderTermsCheck(checked) {
+    gState.hasAcceptedTerms = !!checked;
+    const btnStart = document.getElementById('btn-preloader-start');
+    if (btnStart) btnStart.disabled = !gState.hasAcceptedTerms;
+    saveGame();
+    if (gState.hasAcceptedTerms) {
+        triggerHaptic('tap');
+    }
+}
+
 // Запуск игры по клику на кнопку старта (User Gesture -> 100% разблокировка звука)
 function startGameFromPreloader() {
+    // P8: guard — без принятия соглашения старт заблокирован (п. 1.1.4 правил VK Mini Apps)
+    if (!gState.hasAcceptedTerms) {
+        pushToast(I18N[currentLang].preloader_terms_required_toast || 'Please accept the agreement');
+        return;
+    }
+
     const preloaderEl = document.getElementById('app-preloader');
     if (preloaderEl) {
         preloaderEl.classList.add('preloader-hidden');
@@ -10950,9 +10969,20 @@ try {
         const trackBox = document.getElementById('preloader-track-box');
         const metaBox = document.getElementById('preloader-meta-box');
         const btnStart = document.getElementById('btn-preloader-start');
+        const termsBox = document.getElementById('preloader-terms-box');
+        const termsChk = document.getElementById('chk-preloader-terms');
 
         if (trackBox) trackBox.style.display = 'none';
         if (metaBox) metaBox.style.display = 'none';
+
+        // P8: блок соглашения показывается только если игрок ещё не принял условия.
+        // При повторных запусках с уже установленным флагом — блок скрыт, старт сразу доступен.
+        if (!gState.hasAcceptedTerms) {
+            if (termsBox) termsBox.style.display = 'flex';
+            if (termsChk) termsChk.checked = false;
+        } else {
+            if (termsBox) termsBox.style.display = 'none';
+        }
 
         if (btnStart) {
             const hasSave = !!localStorage.getItem(SAVE_KEY);
@@ -10960,6 +10990,8 @@ try {
                 ? (I18N[currentLang]?.title_start_continue || (currentLang === 'RU' ? 'ПРОДОЛЖИТЬ' : 'CONTINUE'))
                 : (I18N[currentLang]?.title_start_new || (currentLang === 'RU' ? 'ВОЙТИ В БЕЗДНУ' : 'ENTER THE ABYSS'));
             btnStart.style.display = 'block';
+            // P8: блокируем кнопку старта до принятия соглашения (п. 1.1.4 VK Mini Apps)
+            btnStart.disabled = !gState.hasAcceptedTerms;
         }
     }
 
