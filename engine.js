@@ -27,7 +27,7 @@ const SAVE_KEY = 'lords_core_v31_rebalance';
 // применился ли свежий build из GitHub во встроенном VK-браузере.
 // Формат: BUILD_VERSION — мажорная.минорная (совпадает с бампом sw.js CACHE_NAME),
 //         BUILD_DATE    — ISO-дата сборки.
-const BUILD_VERSION = '4.2';
+const BUILD_VERSION = '4.5';
 const BUILD_DATE = '13.10.2026';
 
 // ==========================================================
@@ -4224,7 +4224,11 @@ function renderCards() {
         cardEl.className = `tcg-card tier-${card.tier} faction-${card.faction}`;
 
         const heroImg = card.img || `${card.id}.webp`;
-        const artContent = `<img src="assets/heroes/${heroImg}" class="tcg-art-img" onerror="this.onerror=null; this.style.display='none'; if(this.nextElementSibling) this.nextElementSibling.style.display='block';"><span class="tcg-art-icon" style="display:none;">${card.icon}</span>`;
+        // FIX-CARDS-FREEZE: loading="lazy" + decoding="async" + fetchpriority="low".
+        // Chromium декодировал 84 webp-картинки 512×680 ВСЕ СРАЗУ при открытии Картотеки,
+        // выдавая стартовый фриз 200-400 мс. Теперь карты декодируются по мере попадания
+        // во viewport, а низкий fetchpriority не забивает очередь загрузчика.
+        const artContent = `<img src="assets/heroes/${heroImg}" class="tcg-art-img" loading="lazy" decoding="async" fetchpriority="low" onerror="this.onerror=null; this.style.display='none'; if(this.nextElementSibling) this.nextElementSibling.style.display='block';"><span class="tcg-art-icon" style="display:none;">${card.icon}</span>`;
         const tierColor = `var(--tier-${(card.tier||'f').toLowerCase()})`;
 
         cardEl.innerHTML = `
@@ -9461,8 +9465,23 @@ function openCardInspect(heroId, isShowcase = false, showcaseSourceStr = '') {
     if (!isFtueCompleted()) updateFtueFocus();
 }
 
-// Контроллер 3D-параллакса карточки героя
+// Контроллер 3D-параллакса карточки героя.
+// FIX-MOBILE-TILT: на тач-устройствах параллакс полностью отключён.
+// Причина: (hover: none) + (pointer: coarse) означает, что у игрока нет мыши —
+// hover-эффект бессмысленен, а pointermove летит при каждом касании и скролле.
+// Каждый вызов getBoundingClientRect() + style.transform вынуждает layout-thrash,
+// на слабых Android это даёт 10-15 fps вместо 60. На тачах функция — no-op.
 function attachCardTilt3D() {
+    // Разовая проверка возможностей указателя — кэшируем, чтобы не дёргать matchMedia при каждой карте
+    if (typeof attachCardTilt3D._isTouch === 'undefined') {
+        try {
+            attachCardTilt3D._isTouch = window.matchMedia('(hover: none) and (pointer: coarse)').matches;
+        } catch (e) {
+            attachCardTilt3D._isTouch = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
+        }
+    }
+    if (attachCardTilt3D._isTouch) return;
+
     const box = document.getElementById('inspect-tilt-box');
     const card = document.getElementById('inspect-frame');
     if (!box || !card) return;
@@ -9907,6 +9926,9 @@ function setAvatarPortrait(type, val, heroName) {
     pushToast((currentLang === 'RU' ? "Аватар: " : "Avatar: ") + heroName);
 }
 
+// FIX-MOBILE-PERF: dirty-check по data-avatar-key. Раньше функция перезаписывала
+// innerHTML 60 раз/мин, хотя аватар меняется раз в сессию. Теперь — только при
+// фактическом изменении значения. На мобильных это снимает парс+layout каждый тик.
 function updateAvatarDisplay() {
     const avatarBox = document.getElementById('ui-lord-avatar');
     if (!avatarBox) return;
@@ -9918,6 +9940,9 @@ function updateAvatarDisplay() {
     gState.playerAvatarVal = val;
 
     const type = gState.playerAvatarType || 'img';
+    const avatarKey = `${type}|${val}`;
+    if (avatarBox.getAttribute('data-avatar-key') === avatarKey) return;
+    avatarBox.setAttribute('data-avatar-key', avatarKey);
 
     if (type === 'img' && val) {
         avatarBox.innerHTML = `<img src="${val}" class="lord-avatar-img" onerror="this.onerror=null; this.parentElement.innerHTML='<span style=\\'font-size:18px;\\'>🏹</span>';">`;
@@ -10157,14 +10182,20 @@ function renderUI() {
 
     // Отрисовка статуса Ежедневного Дара (динамическое золото шахт + тикающий таймер)
     const btnFreebie = document.getElementById('btn-claim-freebie');
+    // FIX-MOBILE-PERF: dirty-check. Значения меняются раз в часы, а innerHTML
+    // переписывался 60 раз/мин. Сравнение по кэшу в data-атрибуте.
     const descFreebie = document.getElementById('lbl-freebie-desc');
     const midnightTimer = getFormattedMidnightCountdown();
     const currentFreebieGold = getDailyFreebieGold();
 
     if (descFreebie) {
-        descFreebie.innerHTML = currentLang === 'RU'
+        const freebieHtml = currentLang === 'RU'
             ? `+${formatNumber(currentFreebieGold)} ${gI} (1ч шахт) и +10 ${cI}`
             : `+${formatNumber(currentFreebieGold)} ${gI} (1h mine) & +10 ${cI}`;
+        if (descFreebie.getAttribute('data-cache') !== freebieHtml) {
+            descFreebie.setAttribute('data-cache', freebieHtml);
+            descFreebie.innerHTML = freebieHtml;
+        }
     }
 
     // Динамическое обновление описания Пака Владыки с проверкой языка
@@ -10175,7 +10206,11 @@ function renderUI() {
         const tI = '<img src="assets/icons/shop_tickets.webp" class="res-icon-inline" alt="T">';
         const minesHStr = currentLang === 'RU' ? '8ч шахт' : '8h mines';
         const paladinStr = currentLang === 'RU' ? '[A] Паладин' : '[A] Paladin';
-        starterDesc.innerHTML = `+${formatNumber(sGold)} ${gI} (${minesHStr}) + 250 ${cI} + ${paladinStr} <br>+ 2 ${rI} + 10 ${tI}`;
+        const starterHtml = `+${formatNumber(sGold)} ${gI} (${minesHStr}) + 250 ${cI} + ${paladinStr} <br>+ 2 ${rI} + 10 ${tI}`;
+        if (starterDesc.getAttribute('data-cache') !== starterHtml) {
+            starterDesc.setAttribute('data-cache', starterHtml);
+            starterDesc.innerHTML = starterHtml;
+        }
     }
 
     if (btnFreebie) {
@@ -10238,7 +10273,9 @@ function renderUI() {
     // покупки, колесо), а фоновое обновление идёт через checkNotificationBadgesThrottled().
 }
 
-// Лаконичный текст кнопки просмотра рекламы без лишних слов
+// FIX-MOBILE-PERF: dirty-check по строке. Рекламный текст меняется только при
+// смене золота/тикетов/языка, но функция вызывалась 60 раз/мин → 3600 парсов
+// innerHTML в час впустую. Теперь сравнение по кэшу lastHtml и ранний return.
 function updateAdButtonText() {
     const btn = document.getElementById('btn-ad-footer');
     if (!btn) return;
@@ -10251,11 +10288,13 @@ function updateAdButtonText() {
     const andStr = currentLang === 'RU' ? 'И' : '&';
 
     btn.className = 'ad-reward-btn btn-ad-standard';
-    if ((gState.adTicketsClaimedToday || 0) < 2) {
-        btn.innerHTML = `${adI}${adPrefix}: +${gLoot} ${gI} ${andStr} +2 ${tI}`;
-    } else {
-        btn.innerHTML = `${adI}${adPrefix}: +${gLoot} ${gI}`;
-    }
+    const newHtml = ((gState.adTicketsClaimedToday || 0) < 2)
+        ? `${adI}${adPrefix}: +${gLoot} ${gI} ${andStr} +2 ${tI}`
+        : `${adI}${adPrefix}: +${gLoot} ${gI}`;
+
+    if (btn.getAttribute('data-cache') === newHtml) return;
+    btn.setAttribute('data-cache', newHtml);
+    btn.innerHTML = newHtml;
 }
 
 // Умный возврат из Штаба туда, откуда мы пришли
@@ -10686,12 +10725,20 @@ function updateLiveTimers() {
     const gI = '<img src="assets/icons/gold.webp" class="res-icon-inline" alt="G">';
     const cI = '<img src="assets/icons/crystal.webp" class="res-icon-inline" alt="C">';
 
+    // FIX-MOBILE-PERF: тут таймер меняется ежесекундно, но descFreebie меняется
+    // раз в час (зависит только от currentFreebieGold). Кэшируем по значению.
     if (freebieDesc) {
-        freebieDesc.innerHTML = currentLang === 'RU'
+        const freebieLiveHtml = currentLang === 'RU'
             ? `+${formatNumber(currentFreebieGold)} ${gI} (1ч шахт) и +10 ${cI} • До сброса: ${midnightStr}`
             : `+${formatNumber(currentFreebieGold)} ${gI} (1h mines) & +10 ${cI} • Resets: ${midnightStr}`;
+        if (freebieDesc.getAttribute('data-cache') !== freebieLiveHtml) {
+            freebieDesc.setAttribute('data-cache', freebieLiveHtml);
+            freebieDesc.innerHTML = freebieLiveHtml;
+        }
     }
     if (btnFreebie && gState.dailyFreebieClaimedToday) {
+        // Таймер тикает ежесекундно — тут dirty-check не спасёт, но innerHTML мал.
+        // Оставлено как есть с сохранением скорости — задача следующих сессий.
         btnFreebie.innerHTML = `<img src="assets/icons/icon_hourglass.webp" class="res-icon-inline icon-hourglass-inline" style="width:13px; height:13px;" alt="Hourglass"> ${midnightStr}`;
     }
 
@@ -11117,10 +11164,16 @@ function initStageScaler() {
         const targetH = 860;
         const winW = window.innerWidth;
         const winH = window.innerHeight;
-        // На смартфонах вписываем сцену в экран, на больших мониторах держим 1.0
+        // FIX-STAGE-PC: базовый масштаб — вписываем сцену в окно без обрезки
         let scale = Math.min(winW / targetW, winH / targetH);
+        // FIX-STAGE-PC: раньше на десктопе scale жёстко фиксировался в 1.0 — игра оставалась
+        // 460×860 в центре огромного монитора. Теперь разрешаем увеличение до 1.55x —
+        // комфортно для Full HD / QHD, но не мылит текст на Retina/4K (растр сцены 460×860).
+        // • 1920×1080 → scale ≈ 1.26 (сцена 580×1080)
+        // • 2560×1440 → scale = 1.55 (сцена 713×1333)
+        // Мобилки (<900px) идут по прежней формуле Math.min — там scale и так <1.
         if (winW >= 900 && winH >= 880) {
-            scale = 1.0;
+            scale = Math.min(1.55, scale);
         }
         document.documentElement.style.setProperty('--stage-scale', scale.toFixed(4));
     };

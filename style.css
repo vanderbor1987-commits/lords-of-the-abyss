@@ -325,11 +325,19 @@ html, body {
     padding: 8px 6px 20px 6px !important;
     grid-auto-rows: 180px !important;
     align-content: start !important;
-    background: rgba(10, 14, 22, 0.55) !important;
-    backdrop-filter: blur(10px) !important;
-    -webkit-backdrop-filter: blur(10px) !important;
+    /* FIX-CARDS-FREEZE: backdrop-filter: blur(10px) снят — был ГЛАВНОЙ причиной фризов
+       при скролле. Композитор пересчитывал размытие фона под сеткой из 84 карт на каждый
+       кадр. Заменён плотным полупрозрачным фоном rgba(0.82) — визуально почти идентичен,
+       но рендерится в разы дешевле. */
+    background: rgba(10, 14, 22, 0.82) !important;
     border: 1px solid rgba(245, 176, 65, 0.2) !important;
     border-radius: 8px !important;
+    /* FIX-CARDS-HOVER-LAG: will-change: scroll-position убран. Chrome аллоцировал
+       огромную backing-текстуру под всю высоту скролла (~15000px), вызывая VRAM-чурн
+       при движении мыши. Спецификация says: hint для программного scrollTo, при
+       пользовательском скролле браузер сам оптимизирует. */
+    contain: layout style paint;
+    -webkit-overflow-scrolling: touch;
 }
 
 #player-inspect-modal {
@@ -2652,20 +2660,42 @@ img[src*="trophy.webp"] {
     border: 1.5px solid var(--border-metal);
     box-shadow: 0 4px 10px rgba(0, 0, 0, 0.6);
     transition: transform 0.1s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+    /* FIX-CARDS-FREEZE: contain изолирует layout/style/paint каждой карты от соседей. */
+    contain: layout style paint;
+    /* FIX-CARDS-HOVER-LAG: убраны translateZ(0) и backface-visibility: hidden.
+       Они создавали 84 GPU-текстуры, и hit-testing при движении мыши обходил
+       композиторное дерево из 84 слоёв → микрофризы на каждый пиксель курсора.
+       contain: layout style paint уже даёт изоляцию для скролла, GPU-промоушен
+       больше не нужен. Chrome сам промоутит одну карту при :active-трансформации. */
+}
+
+/* FIX-CARDS-HOVER-LAG: отключаем pointer-events на ВСЕХ детях карты.
+   Hit-testing при движении мыши теперь останавливается на самой .tcg-card
+   и не обходит 8-10 внутренних DOM-узлов (art-layer, img, span, header,
+   footer, name, stats, status-pill). Это ключевая оптимизация: было ~840
+   проверок на кадр (84 карты × 10 узлов), стало 84 проверки.
+   pointer-events наследуется вниз, так что клик по любому месту карты
+   всё равно срабатывает — событие бабблится на .tcg-card с её onclick. */
+.tcg-card > * {
+    pointer-events: none;
 }
 .tcg-card:active { transform: scale(0.96); }
 .tcg-card.unowned { opacity: 0.35; filter: grayscale(0.85); }
 
-/* Рамки карточек СТРОГО в цвет ранга героя */
-.tcg-card.tier-f { border-color: var(--tier-f) !important; }
-.tcg-card.tier-e { border-color: var(--tier-e) !important; }
-.tcg-card.tier-d { border-color: var(--tier-d) !important; box-shadow: 0 0 8px rgba(34, 197, 94, 0.25) !important; }
-.tcg-card.tier-c { border-color: var(--tier-c) !important; box-shadow: 0 0 8px rgba(59, 130, 246, 0.25) !important; }
-.tcg-card.tier-b { border-color: var(--tier-b) !important; box-shadow: 0 0 10px rgba(168, 85, 247, 0.3) !important; }
-.tcg-card.tier-a { border-color: var(--tier-a) !important; box-shadow: 0 0 10px rgba(245, 158, 11, 0.35) !important; }
-.tcg-card.tier-s { border-color: var(--tier-s) !important; box-shadow: 0 0 12px rgba(239, 68, 68, 0.45) !important; }
-.tcg-card.tier-ss { border-color: var(--tier-ss) !important; box-shadow: 0 0 14px rgba(236, 72, 153, 0.55) !important; }
-.tcg-card.tier-sss { border-color: var(--tier-sss) !important; box-shadow: 0 0 16px rgba(234, 179, 8, 0.75) !important; }
+/* Рамки карточек СТРОГО в цвет ранга героя.
+   FIX-CARDS-FREEZE: внешний box-shadow 0 0 Npx rgba(...) заменён нижней тенью 0 4px.
+   Внешнее свечение на 84 картах одновременно — самый дорогой для композитора вид тени
+   (расширяется за границы элемента, требует расширения слоя). Нижняя тень компактна,
+   визуально сохраняет акцент, а иерархия рангов читается по цвету рамки. */
+.tcg-card.tier-f { border-color: var(--tier-f) !important; box-shadow: 0 4px 8px rgba(0, 0, 0, 0.5) !important; }
+.tcg-card.tier-e { border-color: var(--tier-e) !important; box-shadow: 0 4px 8px rgba(0, 0, 0, 0.5) !important; }
+.tcg-card.tier-d { border-color: var(--tier-d) !important; box-shadow: 0 4px 10px rgba(34, 197, 94, 0.4) !important; }
+.tcg-card.tier-c { border-color: var(--tier-c) !important; box-shadow: 0 4px 10px rgba(59, 130, 246, 0.4) !important; }
+.tcg-card.tier-b { border-color: var(--tier-b) !important; box-shadow: 0 4px 10px rgba(168, 85, 247, 0.45) !important; }
+.tcg-card.tier-a { border-color: var(--tier-a) !important; box-shadow: 0 4px 12px rgba(245, 158, 11, 0.5) !important; }
+.tcg-card.tier-s { border-color: var(--tier-s) !important; box-shadow: 0 4px 12px rgba(239, 68, 68, 0.6) !important; }
+.tcg-card.tier-ss { border-color: var(--tier-ss) !important; box-shadow: 0 4px 14px rgba(236, 72, 153, 0.65) !important; }
+.tcg-card.tier-sss { border-color: var(--tier-sss) !important; box-shadow: 0 4px 16px rgba(234, 179, 8, 0.8) !important; }
 
 /* Фоновый арт на 100% полотна мини-карты */
 .tcg-art-bg-layer {
@@ -6183,6 +6213,61 @@ img[src*="trophy.webp"] {
 /* Кнопка ☰ скрыта во время обучения — игрок не должен прервать FTUE */
 #app-viewport.ftue-running #btn-main-menu {
     display: none !important;
+}
+
+/* ==========================================================
+   FIX-MOBILE-PERF: блок оптимизаций для тач-устройств.
+   Медиа (hover: none) and (pointer: coarse) — точный признак «игрок без мыши».
+   На обычном десктопе правила НЕ применяются, визуал не меняется.
+   
+   Что отключаем:
+   1. backdrop-filter blur() на ПОСТОЯННЫХ элементах — заменяем на плотный фон.
+      Blur пересчитывается композитором на каждый кадр под элементом, и на
+      слабых Android-устройствах это самый дорогой эффект. На модалках оставляем —
+      они появляются редко.
+   2. drop-shadow в filter рез-иконок — на 50-100 иконках в DOM даёт стабильный
+      вычет из FPS. Оставляем brightness+contrast, они дешёвые.
+   ========================================================== */
+@media (hover: none) and (pointer: coarse) {
+    /* 1. Плотный фон вместо blur на постоянных панелях */
+    .app-header,
+    .app-footer {
+        background: rgba(10, 14, 22, 0.96) !important;
+        backdrop-filter: none !important;
+        -webkit-backdrop-filter: none !important;
+    }
+
+    .building-card,
+    .castle-tap-btn,
+    .roster-filter-panel,
+    #quests-view .building-card,
+    .hub-selection-card {
+        background-color: rgba(10, 14, 22, 0.94) !important;
+        backdrop-filter: none !important;
+        -webkit-backdrop-filter: none !important;
+    }
+
+    /* 2. Иконки без drop-shadow — оставляем яркость/контраст */
+    .res-icon-inline,
+    .res-img-icon,
+    .icon-ad-inline,
+    .icon-hourglass-inline {
+        filter: brightness(1.7) contrast(1.2) !important;
+    }
+
+    /* 3. Отключаем анимации, крутящиеся вне боя (профилактика против GPU-голодания) */
+    .district-notif-badge.active,
+    .notif-badge.active {
+        animation: none !important;
+        opacity: 1;
+    }
+
+    /* 4. Убираем smooth-transform-переходы там, где они не нужны для тапов */
+    .btn-action,
+    .header-circle-btn,
+    .top-sys-btn {
+        transition: transform 0.05s ease, filter 0.05s ease !important;
+    }
 }
 
 /* Ссылки на правовую документацию внизу Настроек */
