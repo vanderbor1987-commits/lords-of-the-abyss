@@ -1099,6 +1099,15 @@ function loadGame() {
     // MAJOR-M2: актуализируем guard ДО дневных проверок (может заморозить сбросы при откате часов)
     applyClockRollbackGuard();
 
+    // DEV/QA: URL-параметр ?skipftue=1 пропускает обучение.
+    // Удобно для быстрого тестирования после hard reset: не нужно каждый раз лезть в консоль.
+    try {
+        const _params = new URLSearchParams(window.location.search || '');
+        if (_params.get('skipftue') === '1') {
+            skipFtue(true);
+        }
+    } catch (e) {}
+
     // MAJOR-M1: если Колесо было запущено, но приз не начислен (закрытие вкладки в момент анимации) —
     // начисляем его сейчас. Идемпотентно: pendingWheelPrize обнуляется сразу после вызова.
     if (gState.pendingWheelPrize) {
@@ -1292,6 +1301,47 @@ function calculateCP(formation = gState.attackFormation, vsFormation = null, inc
    ACTION-BASED FTUE (12 ШАГОВ ВПЛОТЬ ДО 1-ГО ВОЗВЫШЕНИЯ)
    ========================================================== */
 function isFtueCompleted() { return (gState.ftueStep || 0) >= 12; }
+
+// DEV/QA: пропуск обучения одной командой из консоли или URL-параметром ?skipftue=1.
+// Не влияет на обычных игроков — FTUE запускается штатно, пока флаг не выставлен вручную.
+function skipFtue(silent = false) {
+    gState.ftueStep = 12;
+    gState.ftueTaps = Math.max(15, gState.ftueTaps || 0);
+    gState.ftueSummonDone = true;
+    gState.ftueEquipDone = true;
+    gState.ftueHeroLvlDone = true;
+    gState.ftueDungeonDone = true;
+    gState.ftueExpDone = true;
+    gState.ftueArenaDone = true;
+    gState.ftueRaidDone = true;
+    gState.ftueAutoSpendDone = true;
+    gState.ftueAscendDone = true;
+    saveGame();
+    if (typeof renderFtue === 'function') renderFtue();
+    if (typeof updateFtueFocus === 'function') updateFtueFocus();
+    if (!silent) pushToast('FTUE SKIPPED');
+}
+
+function resetFtue(silent = false) {
+    gState.ftueStep = 0;
+    gState.ftueTaps = 0;
+    gState.ftueSummonDone = false;
+    gState.ftueEquipDone = false;
+    gState.ftueHeroLvlDone = false;
+    gState.ftueDungeonDone = false;
+    gState.ftueExpDone = false;
+    gState.ftueArenaDone = false;
+    gState.ftueRaidDone = false;
+    gState.ftueAutoSpendDone = false;
+    gState.ftueAscendDone = false;
+    saveGame();
+    if (typeof renderFtue === 'function') renderFtue();
+    if (!silent) pushToast('FTUE RESET');
+}
+
+// Хелперы для консоли — чтобы не набирать window.skipFtue() каждый раз
+window.skipFtue = () => skipFtue(false);
+window.resetFtue = () => resetFtue(false);
 
 // Автоматический навигатор между вкладками игры
 function resolveFtueViewTarget(targetViewId, activeViewId) {
