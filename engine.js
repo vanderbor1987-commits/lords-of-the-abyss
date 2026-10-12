@@ -213,6 +213,33 @@ const PlatformBridge = {
         });
     },
 
+    // Универсальный роутер внешних ссылок: VK Bridge → системный браузер, Yandex SDK → openUrl,
+    // Standalone → window.open. Готов к подключению Yandex Games без переписывания вызывающего кода.
+    openExternalUrl(url) {
+        if (!url) return;
+        // Ветка VK: открываем через нативный bridge, чтобы не терять iframe
+        if (isRunningInsideVK() && window.vkBridge) {
+            try {
+                window.vkBridge.send('VKWebAppOpenURL', { link: url, target: 'blank' })
+                    .catch(() => window.open(url, '_blank', 'noopener'));
+            } catch (e) {
+                window.open(url, '_blank', 'noopener');
+            }
+            return;
+        }
+        // Ветка Yandex Games (задел на будущее: сработает, когда ysdkInstance инициализирован)
+        if (this.ysdkInstance && typeof this.ysdkInstance.openUrl === 'function') {
+            try {
+                this.ysdkInstance.openUrl(url).catch(() => window.open(url, '_blank', 'noopener'));
+            } catch (e) {
+                window.open(url, '_blank', 'noopener');
+            }
+            return;
+        }
+        // Standalone (GH Pages / localhost / Telegram): обычное открытие в новой вкладке
+        window.open(url, '_blank', 'noopener');
+    },
+
     // Нативный диалог приглашения друзей ВКонтакте с виральной наградой
     inviteFriendsVK() {
         if (!isRunningInsideVK() || !window.vkBridge) {
@@ -816,6 +843,16 @@ const PlatformBridge = {
 
 function showPlatformRewarded(onSuccess, onError) {
     PlatformBridge.showRewarded(onSuccess, onError);
+}
+
+// Базовый URL для юридических документов. Используется абсолютный адрес GH Pages,
+// потому что внутри VK iframe window.location.origin указывает на vk.com, а не на репозиторий.
+const LEGAL_DOCS_BASE_URL = 'https://vanderbor1987-commits.github.io/lords-of-the-abyss/';
+
+// Единая точка открытия правовых документов (Настройки → «Соглашение» / «Конфиденциальность»).
+// Проксирует в PlatformBridge.openExternalUrl, который сам выбирает транспорт (VK Bridge / Yandex SDK / window.open).
+function openLegalDocument(docKey) {
+    PlatformBridge.openExternalUrl(`${LEGAL_DOCS_BASE_URL}${docKey}.html`);
 }
 
 function tryTriggerInterstitialAd() {
