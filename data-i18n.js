@@ -236,6 +236,8 @@ const I18N = {
         legal_terms: 'Соглашение',
         legal_privacy: 'Конфиденциальность',
         legal_community: 'Сообщество',
+        vk_ladder_btn: 'ДРУЗЬЯ VK',
+        referral_invite_lbl: 'Зов Бездны (Пригласить друзей)',
 
         // Алтарь
         altar_title: 'Врата Призыва Бездны',
@@ -737,6 +739,8 @@ const I18N = {
         legal_terms: 'Terms of Use',
         legal_privacy: 'Privacy Policy',
         legal_community: 'Community',
+        vk_ladder_btn: 'VK FRIENDS',
+        referral_invite_lbl: 'Call of the Void (Invite Friends)',
 
         // Altar
         altar_title: 'Void Summon Gates',

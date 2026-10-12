@@ -1243,6 +1243,7 @@
                 </div>
                 <div id="leaderboard-box" class="ladder-feed" style="max-height: 380px;"></div>
                 <div style="display:flex; gap:6px; margin-top:6px;">
+                    <button class="btn-action" id="btn-arena-vk-ladder" style="flex:1; background:#1e3a8a; border-color:#3b82f6; color:#fff; display:none;" onclick="PlatformBridge.showVKLeaderboard()" data-i18n="vk_ladder_btn">ДРУЗЬЯ VK</button>
                     <button class="btn-action" style="flex:1; background:#273347; color:#fff;" onclick="openRewardsModal()" data-i18n="arena_rewards_btn">НАГРАДЫ ЛИГИ</button>
                     <button class="btn-action" style="flex:1;" onclick="closeArenaLadderModal()" data-i18n="modal_close">ЗАКРЫТЬ</button>
                 </div>
@@ -1388,6 +1389,10 @@
                         <div class="building-card settings-row-card" id="row-perk-vk-homescreen" style="padding:6px 10px;">
                             <span>Добавить на экран смартфона</span>
                             <button class="btn-action" id="btn-perk-homescreen" style="font-size:11px; padding:4px 8px; display:inline-flex; align-items:center; gap:3px;" onclick="addToHomeScreenVK()">+50 <img src="assets/icons/crystal.webp" class="res-icon-inline" alt="C"> ВЗЯТЬ</button>
+                        </div>
+                        <div class="building-card settings-row-card" id="row-perk-vk-invite" style="padding:6px 10px;">
+                            <span data-i18n="referral_invite_lbl">Зов Бездны (Пригласить друзей)</span>
+                            <button class="btn-action" id="btn-perk-vk-invite" style="font-size:11px; padding:4px 8px; display:inline-flex; align-items:center; gap:3px;" onclick="PlatformBridge.inviteFriendsVK()">+50 <img src="assets/icons/crystal.webp" class="res-icon-inline" alt="C"> ВЗЯТЬ</button>
                         </div>
                         <div class="building-card settings-row-card" id="row-perk-yandex-shortcut" style="padding:6px 10px; display:none;">
                             <span>Иконка на рабочий стол</span>

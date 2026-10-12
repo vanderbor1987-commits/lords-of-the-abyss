@@ -49,6 +49,8 @@ let gState = {
     hasFirstPurchaseDone: false,
     hasStarterPackBought: false,
     firstDoubleClaimed: {},
+    claimedReferralBonus: false,
+    lastInviteDate: '',
     claimedChronicles: [],
     vipShowAds: false,
     dailyFreebieClaimedToday: false,
@@ -191,6 +193,87 @@ const PlatformBridge = {
     // Кэш промиса динамической загрузки Yandex SDK v2 (защита от двойной инжекции)
     _yandexSdkPromise: null,
 
+    // Открытие нативного Лидерборда ВКонтакте (соревнование с друзьями)
+    showVKLeaderboard() {
+        if (!isRunningInsideVK() || !window.vkBridge) return;
+        const totalCp = Math.floor(calculateCP ? calculateCP() : 0);
+        window.vkBridge.send('VKWebAppShowLeaderBoardBox', {
+            user_result: Math.max(1, totalCp)
+        }).catch(err => {
+            console.warn('[PlatformBridge] VK LeaderBoard error:', err);
+        });
+    },
+
+    // Нативный диалог приглашения друзей ВКонтакте с виральной наградой
+    inviteFriendsVK() {
+        if (!isRunningInsideVK() || !window.vkBridge) {
+            const shareUrl = `https://vk.ru/app54817477#ref_${gState.playerName || 'lord'}`;
+            if (navigator.clipboard) {
+                navigator.clipboard.writeText(shareUrl).then(() => {
+                    pushToast(currentLang === 'RU' ? 'Ссылка скопирована в буфер!' : 'Link copied to clipboard!');
+                }).catch(() => {});
+            }
+            return;
+        }
+
+        window.vkBridge.send('VKWebAppShowInviteBox').then(data => {
+            if (data && data.success) {
+                const today = new Date().toDateString();
+                if (gState.lastInviteDate !== today) {
+                    gState.lastInviteDate = today;
+                    gState.crystals = (gState.crystals || 0) + 50;
+                    playCoinSfx();
+                    triggerHaptic('upgrade');
+                    const cI = '<img src="assets/icons/crystal.webp" class="res-icon-inline" alt="C">';
+                    pushToast(currentLang === 'RU' ? `+50 ${cI} за приглашение друзей!` : `+50 ${cI} for inviting friends!`);
+                    saveGame();
+                    renderPlatformRewardsUI();
+                    renderUI();
+                } else {
+                    pushToast(currentLang === 'RU' ? 'Приглашения отправлены!' : 'Invitations sent!');
+                }
+            }
+        }).catch(() => {});
+    },
+
+    // Проверка реферального перехода новичка («Дар Дружбы»)
+    checkReferralArrival() {
+        if (gState.claimedReferralBonus) return;
+        try {
+            const hash = window.location.hash || '';
+            const search = window.location.search || '';
+            const urlParams = new URLSearchParams(search);
+            const currentUserId = urlParams.get('vk_user_id') || '';
+
+            let refId = '';
+            const hashMatch = hash.match(/ref_(\w+)/);
+            if (hashMatch) {
+                refId = hashMatch[1];
+            } else if (urlParams.get('vk_ref')) {
+                refId = urlParams.get('vk_ref');
+            }
+
+            if (refId && refId !== currentUserId) {
+                gState.claimedReferralBonus = true;
+                const bonusGold = 1000;
+                const bonusCryst = 25;
+                gState.gold += bonusGold;
+                gState.lifetimeGold += bonusGold;
+                gState.crystals += bonusCryst;
+                saveGame();
+                const gI = '<img src="assets/icons/gold.webp" class="res-icon-inline" alt="G">';
+                const cI = '<img src="assets/icons/crystal.webp" class="res-icon-inline" alt="C">';
+                setTimeout(() => {
+                    playCoinSfx();
+                    triggerHaptic('legendary');
+                    pushToast(currentLang === 'RU' 
+                        ? `ДАР ДРУЖБЫ: +${formatNumber(bonusGold)} ${gI} • +${bonusCryst} ${cI}` 
+                        : `FRIENDSHIP SPOILS: +${formatNumber(bonusGold)} ${gI} • +${bonusCryst} ${cI}`);
+                }, 1500);
+            }
+        } catch(e) {}
+    },
+
     init() {
         if (isRunningInsideVK() && window.vkBridge) {
             window.vkBridge.send('VKWebAppInit').catch(() => {});
@@ -208,6 +291,7 @@ const PlatformBridge = {
                 });
             } catch (e) {}
             this.initVKCloudSync();
+            this.checkReferralArrival();
         }
 
         // Yandex Games SDK подгружается ДИНАМИЧЕСКИ и ТОЛЬКО внутри реального портала Яндекс.Игр.
@@ -3843,6 +3927,10 @@ function openArenaLadderModal() {
     } catch (e) {
         console.warn("[Arena] Ошибка рендера таблицы лидеров:", e);
     }
+    const vkLadderBtn = document.getElementById('btn-arena-vk-ladder');
+    if (vkLadderBtn) {
+        vkLadderBtn.style.display = isRunningInsideVK() ? 'inline-flex' : 'none';
+    }
     const m = document.getElementById('arena-ladder-modal');
     if (m) m.style.display = 'flex';
 }
@@ -7060,10 +7148,12 @@ function addToHomeScreenVK() {
 function renderPlatformRewardsUI() {
     const bBtn = document.getElementById('btn-perk-bookmark');
     const hBtn = document.getElementById('btn-perk-homescreen');
+    const invBtn = document.getElementById('btn-perk-vk-invite');
     const yRow = document.getElementById('row-perk-yandex-shortcut');
     const yBtn = document.getElementById('btn-perk-yandex-shortcut');
     const bRow = document.getElementById('row-perk-vk-bookmark') || bBtn?.closest('.settings-row-card');
     const hRow = document.getElementById('row-perk-vk-homescreen') || hBtn?.closest('.settings-row-card');
+    const invRow = document.getElementById('row-perk-vk-invite') || invBtn?.closest('.settings-row-card');
     const titleLbl = document.getElementById('lbl-platform-bonuses');
 
     const inVK = isRunningInsideVK();
@@ -7075,11 +7165,25 @@ function renderPlatformRewardsUI() {
         titleLbl.style.display = (inVK || inYandex) ? 'block' : 'none';
     }
 
-    // Ветка VK (Закладки и Экран)
+    // Ветка VK (Закладки, Экран и Инвайты)
     if (bRow) bRow.style.display = inVK ? 'flex' : 'none';
     if (hRow) hRow.style.display = inVK ? 'flex' : 'none';
+    if (invRow) invRow.style.display = inVK ? 'flex' : 'none';
 
     if (inVK) {
+        if (invBtn) {
+            const today = new Date().toDateString();
+            if (gState.lastInviteDate === today) {
+                invBtn.innerText = currentLang === 'RU' ? '✔ ОТПРАВЛЕНО' : '✔ SENT';
+                invBtn.disabled = true;
+                invBtn.style.background = '#273347';
+            } else {
+                invBtn.innerHTML = `+50 ${cI} ${currentLang === 'RU' ? 'ВЗЯТЬ' : 'CLAIM'}`;
+                invBtn.disabled = false;
+                invBtn.style.background = 'var(--gold)';
+                invBtn.style.color = '#0b0f17';
+            }
+        }
         if (bBtn) {
             if (gState.hasBookmarked) {
                 bBtn.innerText = currentLang === 'RU' ? '✔ В ЗАКЛАДКАХ' : '✔ BOOKMARKED';
