@@ -978,7 +978,7 @@
                 <!-- Кнопки публикации и закрытия -->
                 <div class="calendar-actions-row" style="width: 100%; gap: 6px;">
                     <button class="btn-action" id="btn-spotlight-share" style="flex:1; background:linear-gradient(180deg,#3b82f6,#1d4ed8); border-color:#60a5fa; font-size:11.5px; padding:10px 4px;" onclick="shareTriumphToWall('sss_hero', window.lastCelebratedHeroName || '')">
-                        НА СТЕНУ (+25 <img src="assets/icons/crystal.webp" class="res-icon-inline" alt="C">)
+                        ПОДЕЛИТЬСЯ
                     </button>
                     <button class="btn-action spotlight-btn" id="btn-spotlight-accept" style="flex:1.4; padding:10px 6px;" onclick="closeEpicQuote()">
                         ПРИНЯТЬ
@@ -1123,7 +1123,7 @@
                 </div>
                 <div class="leviathan-triumph-actions">
                     <button class="btn-action leviathan-share-btn" id="btn-leviathan-share" onclick="shareTriumphToWall('leviathan')" data-i18n="raid_triumph_share_btn">
-                        НА СТЕНУ (+25 <img src="assets/icons/crystal.webp" class="res-icon-inline" alt="C">)
+                        ПОДЕЛИТЬСЯ
                     </button>
                     <button class="btn-action modal-full-btn leviathan-claim-btn" id="btn-leviathan-claim" onclick="closeLeviathanTriumphOverlay()" data-i18n="raid_triumph_claim_btn">
                         ПРИНЯТЬ ТРИУМФ ➔
@@ -1464,11 +1464,11 @@
 
                 <button class="btn-action modal-full-btn" style="margin-top:4px;" onclick="saveAndCloseSettings()" data-i18n="settings_btn_save">СОХРАНИТЬ И ЗАКРЫТЬ</button>
                 <div class="settings-legal-links-row">
-                    <a href="terms.html" target="_blank" rel="noopener" class="settings-legal-link" data-i18n="legal_terms">Соглашение</a>
+                    <button type="button" class="settings-legal-link" onclick="openLegalDocument('terms')" data-i18n="legal_terms">Соглашение</button>
                     <span>•</span>
-                    <a href="privacy.html" target="_blank" rel="noopener" class="settings-legal-link" data-i18n="legal_privacy">Конфиденциальность</a>
+                    <button type="button" class="settings-legal-link" onclick="openLegalDocument('privacy')" data-i18n="legal_privacy">Конфиденциальность</button>
                     <span>•</span>
-                    <a href="https://vk.ru/lordsabyss" target="_blank" rel="noopener" class="settings-legal-link" data-i18n="legal_community">Сообщество</a>
+                    <button type="button" class="settings-legal-link" onclick="PlatformBridge.openExternalUrl('https://vk.ru/lordsabyss')" data-i18n="legal_community">Сообщество</button>
                 </div>
                 <div style="text-align: center; color: var(--border-metal-light); font-size: 11px; font-weight: 800; margin-top: 8px; letter-spacing: 0.5px;">DEVELOPED BY VANDER BOR</div>
             </div>

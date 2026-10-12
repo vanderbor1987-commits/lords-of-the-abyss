@@ -7211,44 +7211,37 @@ function spawnCelebrationConfetti() {
     }
 }
 
+// P10: кнопка «Поделиться» без награды. Заменён VKWebAppShowWallPostBox на VKWebAppShare
+// (нативный диалог шаринга, соответствует п. 2.6.2 правил VK Mini Apps).
+// Ветка arena_top1 удалена — точка вызова отсутствовала в UI.
 function shareTriumphToWall(type, extra = '') {
-    // L12: fallback-имя героя в тексте публикации локализовано.
-    // Раньше было 'Бога' захардкожено в inline onclick — теперь безопасно из контекста.
     if (!extra) extra = currentLang === 'RU' ? 'Бога' : 'God';
     const msgs = {
         sss_hero: currentLang === 'RU' 
             ? `Я призвал Божественного Владыку [SSS] ${extra} в игре «Lords of the Abyss»! Кто осмелится бросить вызов моему легиону?` 
             : `I summoned the Divine Overlord [SSS] ${extra} in "Lords of the Abyss"! Who dares challenge my legion?`,
-        arena_top1: currentLang === 'RU' 
-            ? `Мой легион взошел на вершину #1 Арены Лордов в «Lords of the Abyss»!` 
-            : `My legion reached #1 on the Lords Arena in "Lords of the Abyss"!`,
         leviathan: currentLang === 'RU' 
             ? `Древний Мировой Левиафан повержен моим войском в «Lords of the Abyss»!` 
             : `The Ancient World Leviathan has fallen to my army in "Lords of the Abyss"!`
     };
     const msg = msgs[type] || (currentLang === 'RU' ? `Мой легион правит Бездной в «Lords of the Abyss»!` : `My legion rules the Abyss in "Lords of the Abyss"!`);
 
-    if (isRunningInsideVK()) {
-        window.vkBridge.send('VKWebAppShowWallPostBox', { message: msg })
-            .then(() => {
-                const today = new Date().toDateString();
-                if (gState.lastWallPostDate !== today) {
-                    gState.lastWallPostDate = today;
-                    gState.crystals += 25;
-                    playCoinSfx();
-                    triggerHaptic('upgrade');
-                    const cI = '<img src="assets/icons/crystal.webp" class="res-icon-inline" alt="C">';
-                    pushToast(currentLang === 'RU' ? `+25 ${cI} за весть о триумфе!` : `+25 ${cI} for sharing triumph!`);
-                    saveGame();
-                    renderUI();
-                }
-            })
-            .catch(() => {});
-    } else if (navigator.share) {
-        navigator.share({ title: 'Lords of the Abyss', text: msg, url: window.location.href }).catch(() => {});
-    } else {
-        navigator.clipboard?.writeText(msg).then(() => {
-            pushToast(currentLang === 'RU' ? '📋 Весть скопирована в буфер!' : '📋 Copied to clipboard!');
+    const shareUrl = 'https://vk.com/app54817477';
+
+    // Ветка VK: нативный share-диалог без вознаграждения
+    if (isRunningInsideVK() && window.vkBridge) {
+        try {
+            window.vkBridge.send('VKWebAppShare', { link: shareUrl }).catch(() => {});
+        } catch (e) {}
+        return;
+    }
+
+    // Standalone / Yandex: Web Share API с текстом, fallback — буфер обмена
+    if (navigator.share) {
+        navigator.share({ title: 'Lords of the Abyss', text: msg, url: shareUrl }).catch(() => {});
+    } else if (navigator.clipboard) {
+        navigator.clipboard.writeText(`${msg} ${shareUrl}`).then(() => {
+            pushToast(currentLang === 'RU' ? 'Весть скопирована в буфер!' : 'Copied to clipboard!');
         }).catch(() => {});
     }
 }
@@ -10324,13 +10317,11 @@ function applyLanguage(lang) {
         openFirstPurchaseModal();
     }
 
-    // L13: кнопки Hero Spotlight (share / accept) — статичные тексты в index.html,
-    // требуют явного обновления при смене языка.
+    // L13: кнопка Hero Spotlight (share) — статичный текст в index.html,
+    // требует явного обновления при смене языка (data-i18n не используется).
     const spotlightShare = document.getElementById('btn-spotlight-share');
     if (spotlightShare) {
-        spotlightShare.innerHTML = currentLang === 'RU'
-            ? 'НА СТЕНУ (+25 <img src="assets/icons/crystal.webp" class="res-icon-inline" alt="C">)'
-            : 'SHARE (+25 <img src="assets/icons/crystal.webp" class="res-icon-inline" alt="C">)';
+        spotlightShare.innerText = currentLang === 'RU' ? 'ПОДЕЛИТЬСЯ' : 'SHARE';
     }
     const spotlightAccept = document.getElementById('btn-spotlight-accept');
     if (spotlightAccept) {
