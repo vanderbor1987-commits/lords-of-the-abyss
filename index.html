@@ -1632,6 +1632,21 @@
             </div>
         </div>
 
+        <!-- P8-ARCH: встроенная модалка юридических документов (terms / privacy).
+             Открывается ВНУТРИ игрового iframe, чтобы не создавать дубль VK-сессии
+             при клике «Соглашение» из карточки приложения. z-index 100000 — выше предзагрузчика (99999). -->
+        <div class="modal-backdrop" id="legal-doc-modal" style="display: none; z-index: 100000;">
+            <div class="modal-window legal-doc-window">
+                <div class="modal-header-row">
+                    <h3 class="modal-headline" id="legal-doc-title">ДОКУМЕНТ</h3>
+                    <span class="modal-close-x" onclick="closeLegalDocModal()">✖</span>
+                </div>
+                <div class="legal-doc-updated" id="legal-doc-updated"></div>
+                <div class="legal-doc-scroll" id="legal-doc-body"></div>
+                <button class="btn-action modal-full-btn" onclick="closeLegalDocModal()" style="margin-top: 6px;" data-i18n="modal_close">ЗАКРЫТЬ</button>
+            </div>
+        </div>
+
         <!-- Контейнер всплывающих тостов -->
         <div id="toast-feed"></div>
     </div>
