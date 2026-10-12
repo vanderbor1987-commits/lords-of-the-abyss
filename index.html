@@ -47,6 +47,18 @@
                 <span class="preloader-pct" id="preloader-pct">0%</span>
             </div>
 
+            <!-- P8: Экран принятия соглашения при первом запуске (п. 1.1.4 правил VK Mini Apps) -->
+            <div class="preloader-terms-box" id="preloader-terms-box" style="display: none;">
+                <div class="preloader-terms-intro" data-i18n="preloader_terms_intro">Для запуска игры необходимо принять условия:</div>
+                <div class="preloader-terms-checkbox-row">
+                    <input type="checkbox" id="chk-preloader-terms" onchange="togglePreloaderTermsCheck(this.checked)">
+                    <label for="chk-preloader-terms" class="preloader-terms-check-label" data-i18n="preloader_terms_accept_label">Я принимаю</label>
+                    <button type="button" class="preloader-terms-link" onclick="event.preventDefault(); openLegalDocument('terms')" data-i18n="legal_terms">Соглашение</button>
+                    <span data-i18n="preloader_terms_and">и</span>
+                    <button type="button" class="preloader-terms-link" onclick="event.preventDefault(); openLegalDocument('privacy')" data-i18n="legal_privacy">Конфиденциальность</button>
+                </div>
+            </div>
+
             <!-- Пульсирующая кнопка старта (появляется при 100%) -->
             <button class="btn-action preloader-start-btn" id="btn-preloader-start" onclick="startGameFromPreloader()" style="display: none;" data-i18n="title_start_new">
                 ВОЙТИ В БЕЗДНУ

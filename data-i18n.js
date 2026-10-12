@@ -10,6 +10,12 @@ const I18N = {
         title_start_continue: 'ПРОДОЛЖИТЬ ПОХОД',
         title_lang_prompt: 'ВЫБЕРИТЕ ЯЗЫК / SELECT LANGUAGE',
 
+        // P8: Экран принятия соглашения при первом запуске (п. 1.1.4 правил VK Mini Apps)
+        preloader_terms_intro: 'Для запуска игры необходимо принять условия:',
+        preloader_terms_accept_label: 'Я принимаю',
+        preloader_terms_and: 'и',
+        preloader_terms_required_toast: 'Отметьте согласие для продолжения',
+
         // Навигация
         citadel: 'Цитадель',
         roster: 'Штаб',
@@ -512,6 +518,12 @@ const I18N = {
         title_start_new: 'ENTER THE ABYSS',
         title_start_continue: 'CONTINUE CAMPAIGN',
         title_lang_prompt: 'SELECT LANGUAGE / ВЫБЕРИТЕ ЯЗЫК',
+
+        // P8: First-launch agreement screen (VK Mini Apps rule 1.1.4)
+        preloader_terms_intro: 'To start the game, you must accept:',
+        preloader_terms_accept_label: 'I accept',
+        preloader_terms_and: 'and',
+        preloader_terms_required_toast: 'Please check the agreement to continue',
 
         // Navigation
         citadel: 'Citadel',
