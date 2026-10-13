@@ -375,19 +375,38 @@ const PlatformBridge = {
     // при медленном ответе Worker'а или CORS-глюке VK зависал на splash навсегда
     // (на refresh воспроизводилось стабильно). Теперь handshake вызывается СИНХРОННО
     // в boot-блоке до любых await. Идемпотентен через флаг _vkHandshakeDone.
-    initVKHandshake() {
+        initVKHandshake() {
         if (PlatformBridge._vkHandshakeDone) return;
         PlatformBridge._vkHandshakeDone = true;
-        // DIAG-TEMP: временный диагностический лог — убрать перед модерацией!
         console.info('[DIAG] initVKHandshake fired, isVK=' + isRunningInsideVK() + ', hasBridge=' + !!window.vkBridge);
         if (!isRunningInsideVK() || !window.vkBridge) return;
         try {
+            // FIX-VK-GAMES-SPLASH: VK Games-контейнер не снимает свой brand-splash,
+            // пока не получит полный handshake. Помимо VKWebAppInit требуется
+            // VKWebAppUpdateConfig (scheme + appearance) — без него контейнер
+            // считает приложение «не полностью готовым». Это подтверждено тем, что
+            // [DIAG] VKWebAppInit OK приходит, но splash висит.
             window.vkBridge.send('VKWebAppInit')
-                .then(() => console.info('[DIAG] VKWebAppInit OK'))
-                .catch(e => console.warn('[DIAG] VKWebAppInit FAIL', e));
+                .then(data => {
+                    console.info('[DIAG] VKWebAppInit resolved, result=' + (data && data.result));
+                    // Сразу после успешного Init — сообщаем VK о цветовой схеме.
+                    // Тёмная тема #07090d, scheme space_gray — совпадает с :root-палитрой игры.
+                    return window.vkBridge.send('VKWebAppUpdateConfig', {
+                        appearance: 'dark',
+                        scheme: 'space_gray'
+                    });
+                })
+                .then(() => console.info('[DIAG] VKWebAppUpdateConfig OK'))
+                .catch(e => console.warn('[DIAG] VK handshake FAIL', e));
+
+            // FIX-VK-GAMES-SPLASH: подписка на ВСЕ события VK Bridge (диагностика).
+            // Позволит увидеть, отправляет ли VK нам ViewRestore/UpdateConfig/GetLaunchParams,
+            // и на каком из событий VK ожидает от нас ответа. Убираем в проде после отладки.
             window.vkBridge.subscribe(event => {
                 if (!event || !event.detail) return;
                 const type = event.detail.type;
+                console.info('[DIAG] VK event:', type, event.detail.data ? JSON.stringify(event.detail.data).slice(0, 200) : '');
+
                 if (type === 'VKWebAppViewHide') {
                     pauseBgMusic();
                     if (typeof aCtx !== 'undefined' && aCtx && aCtx.state === 'running') {
@@ -401,7 +420,21 @@ const PlatformBridge = {
                     if (!gState.isMusicMuted) playBgMusic();
                 }
             });
-        } catch (e) {}
+
+            // FIX-VK-GAMES-SPLASH: страховочный повторный Init через 800мс.
+            // Первый VKWebAppInit мог уйти в буфер до того, как родительский
+            // VK-контейнер успел подписаться на postMessage. Второй — гарантированно
+            // попадёт в живой слушатель. Идемпотентно: VK спокойно принимает повторный.
+            setTimeout(() => {
+                if (window.vkBridge && isRunningInsideVK()) {
+                    window.vkBridge.send('VKWebAppInit')
+                        .then(() => console.info('[DIAG] VKWebAppInit RETRY OK'))
+                        .catch(e => console.warn('[DIAG] VKWebAppInit RETRY FAIL', e));
+                }
+            }, 800);
+        } catch (e) {
+            console.warn('[DIAG] initVKHandshake outer catch:', e);
+        }
     },
 
     init() {
