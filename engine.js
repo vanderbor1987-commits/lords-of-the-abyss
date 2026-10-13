@@ -67,7 +67,7 @@ function devLog(...args) {
 // применился ли свежий build из GitHub во встроенном VK-браузере.
 // Формат: BUILD_VERSION — мажорная.минорная (совпадает с бампом sw.js CACHE_NAME),
 //         BUILD_DATE    — ISO-дата сборки.
-const BUILD_VERSION = '4.6.3';
+const BUILD_VERSION = '4.6.4';
 const BUILD_DATE = '13.10.2026';
 
 // ==========================================================
@@ -182,6 +182,24 @@ let gState = {
         raid: { stage: 1, curr: 0, target: 1, rewardGold: 500 }
     }
 };
+
+// FIX-TERMS-PERSIST: синхронная гидратация флага согласия ДО preloader IIFE.
+// Проблема: loadGame() запускается в async IIFE после fetch к Cloudflare (~300-800ms),
+// а preloader завершается раньше (ассеты из кэша → 50-200ms, либо watchdog на 2.2s).
+// На повторных визитах с warm-cache completePreloader() читал gState.hasAcceptedTerms
+// ещё до того, как loadGame() подтянет его из localStorage → экран согласия показывался
+// каждый раз заново. Читаем ОДИН флаг синхронно — это микросекунды, boot не блокируется.
+(function syncHydrateTermsFlag() {
+    try {
+        const raw = localStorage.getItem(SAVE_KEY);
+        if (raw) {
+            const parsed = JSON.parse(raw);
+            if (parsed && typeof parsed.hasAcceptedTerms === 'boolean') {
+                gState.hasAcceptedTerms = parsed.hasAcceptedTerms;
+            }
+        }
+    } catch(e) {}
+})();
 
 /* ==========================================================
    УТИЛИТЫ И РЕКЛАМА (С ЖЕСТКИМ ЛИМИТОМ ТОСТОВ И ДЕДУПЛИКАЦИЕЙ)
