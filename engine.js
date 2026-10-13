@@ -380,25 +380,20 @@ const PlatformBridge = {
         PlatformBridge._vkHandshakeDone = true;
         console.info('[DIAG] initVKHandshake fired, isVK=' + isRunningInsideVK() + ', hasBridge=' + !!window.vkBridge);
         if (!isRunningInsideVK() || !window.vkBridge) return;
-        try {
-            // FIX-VK-GAMES-SPLASH: VK Games-контейнер не снимает свой brand-splash,
-            // пока не получит полный handshake. Помимо VKWebAppInit требуется
-            // VKWebAppUpdateConfig (scheme + appearance) — без него контейнер
-            // считает приложение «не полностью готовым». Это подтверждено тем, что
-            // [DIAG] VKWebAppInit OK приходит, но splash висит.
+                try {
             window.vkBridge.send('VKWebAppInit')
                 .then(data => {
                     console.info('[DIAG] VKWebAppInit resolved, result=' + (data && data.result));
-                    // FIX-VK-SPLASH: раньше мы отвечали VK своим VKWebAppUpdateConfig
-                    // со scheme: "space_gray". Но VK САМ присылает нам событие
-                    // VKWebAppUpdateConfig со scheme: "vkcom_dark" — он уже настроил тему
-                    // и ждёт, что мы её примем, а не перебьём своей. Убрано.
-                    //
-                    // Вместо этого — финальный маркер готовности. Приложение синхронизировано
-                    // с облаком, UI готов к показу. Этот лог не под dev-гвардом, оставлен
-                    // в проде как boot-маркер. Уберём после подтверждения стабильности.
-                    console.info('[LOTA] READY — application initialized, waiting for VK container');
+                    // FIX-VK-SPLASH-2: VK Games-контейнер ждёт от приложения
+                    // VKWebAppUpdateConfig, чтобы покрасить свой splash под цвета игры
+                    // и снять его. Отправляем ПОСЛЕ успешного Init со значениями VK-темы
+                    // (vkcom_dark), не своими — это нейтрально, просто синхронизация с VK.
+                    return window.vkBridge.send('VKWebAppUpdateConfig', {
+                        appearance: 'dark',
+                        scheme: 'vkcom_dark'
+                    }).catch(e => console.info('[DIAG] UpdateConfig skip:', e && e.message));
                 })
+                .then(() => console.info('[LOTA] READY — application initialized, waiting for VK container'))
                 .catch(e => console.warn('[DIAG] VK handshake FAIL', e));
 
             // FIX-VK-GAMES-SPLASH: подписка на ВСЕ события VK Bridge (диагностика).
@@ -423,17 +418,10 @@ const PlatformBridge = {
                 }
             });
 
-            // FIX-VK-GAMES-SPLASH: страховочный повторный Init через 800мс.
-            // Первый VKWebAppInit мог уйти в буфер до того, как родительский
-            // VK-контейнер успел подписаться на postMessage. Второй — гарантированно
-            // попадёт в живой слушатель. Идемпотентно: VK спокойно принимает повторный.
-            setTimeout(() => {
-                if (window.vkBridge && isRunningInsideVK()) {
-                    window.vkBridge.send('VKWebAppInit')
-                        .then(() => console.info('[DIAG] VKWebAppInit RETRY OK'))
-                        .catch(e => console.warn('[DIAG] VKWebAppInit RETRY FAIL', e));
-                }
-            }, 800);
+            // FIX-VK-SPLASH-2: RETRY VKWebAppInit убран. Логи показали, что VK
+            // отвечает {"result": false} на повторный Init через 800мс — это может
+            // сбрасывать состояние контейнера в «не инициализирован», заново
+            // показывая splash. Первый Init всегда успешен, второй — вреден.
         } catch (e) {
             console.warn('[DIAG] initVKHandshake outer catch:', e);
         }
