@@ -389,14 +389,16 @@ const PlatformBridge = {
             window.vkBridge.send('VKWebAppInit')
                 .then(data => {
                     console.info('[DIAG] VKWebAppInit resolved, result=' + (data && data.result));
-                    // Сразу после успешного Init — сообщаем VK о цветовой схеме.
-                    // Тёмная тема #07090d, scheme space_gray — совпадает с :root-палитрой игры.
-                    return window.vkBridge.send('VKWebAppUpdateConfig', {
-                        appearance: 'dark',
-                        scheme: 'space_gray'
-                    });
+                    // FIX-VK-SPLASH: раньше мы отвечали VK своим VKWebAppUpdateConfig
+                    // со scheme: "space_gray". Но VK САМ присылает нам событие
+                    // VKWebAppUpdateConfig со scheme: "vkcom_dark" — он уже настроил тему
+                    // и ждёт, что мы её примем, а не перебьём своей. Убрано.
+                    //
+                    // Вместо этого — финальный маркер готовности. Приложение синхронизировано
+                    // с облаком, UI готов к показу. Этот лог не под dev-гвардом, оставлен
+                    // в проде как boot-маркер. Уберём после подтверждения стабильности.
+                    console.info('[LOTA] READY — application initialized, waiting for VK container');
                 })
-                .then(() => console.info('[DIAG] VKWebAppUpdateConfig OK'))
                 .catch(e => console.warn('[DIAG] VK handshake FAIL', e));
 
             // FIX-VK-GAMES-SPLASH: подписка на ВСЕ события VK Bridge (диагностика).
@@ -11523,15 +11525,21 @@ try {
     renderUI();
     scheduleNextDemon();
 
-    document.addEventListener('pointerdown', () => {
-        const ctx = getAudioContext();
-        if (ctx && ctx.state === 'suspended') {
-            ctx.resume().catch(() => {});
-        }
-        if (!gState.isMusicMuted) {
-            playBgMusic();
-        }
-    }, { once: true });
+            document.addEventListener('pointerdown', () => {
+            const ctx = getAudioContext();
+            if (ctx && ctx.state === 'suspended') {
+                ctx.resume().catch(() => {});
+            }
+            if (!gState.isMusicMuted) {
+                playBgMusic();
+            }
+        }, { once: true });
+
+        // FIX-VK-SPLASH: маркер полной инициализации UI. Показывает в VK-консоли,
+        // что весь render* отработал и прелоадер игры скрыт. Если этот лог есть,
+        // а VK-сплэш ещё висит — проблема 100% на стороне VK-контейнера,
+        // не нашего кода. Временно, уберём после отладки.
+        console.info('[LOTA] UI RENDERED — all screens initialized, ready to display');
 
     })(); // FIX-P9-RACE: закрываем async IIFE ТОЛЬКО после полной инициализации UI.
           // Теперь весь render* и обработчики запускаются с уже загруженным gState —
