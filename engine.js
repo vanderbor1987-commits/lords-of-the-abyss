@@ -1300,6 +1300,11 @@ function getFormattedMidnightCountdown() {
 }
 
 function saveGame(immediateCloud = false) {
+    // FIX-SAVE-RACE: до завершения loadGame() писать нельзя — gState содержит
+    // дефолтное (FTUE) состояние, и ранняя запись стирает реальный сейв.
+    // См. подробное объяснение у объявления gStateLoaded.
+    if (!gStateLoaded) return;
+
     gState.lastTickTime = Date.now();
     try {
         const payload = JSON.stringify(gState);
@@ -1335,6 +1340,26 @@ let wasLoadedFromEmptyStorage = false;
 // мутаций gState) и используем ИМЕННО ЕГО в арбитраже. gState.lastTickTime
 // после loadGame мутирован и для сравнения непригоден.
 let localStorageTickTimeAtBoot = 0;
+
+// FIX-SAVE-RACE: гвардия от гонки между setInterval(saveGame, 5000) и loadGame().
+//
+// ПРОБЛЕМА (обнаружена на реальном сценарии «phone → comp → phone»):
+//   setInterval(saveGame, 5000) регистрируется на верхнем уровне модуля и
+//   выстреливает на t=5s. loadGame() вызывается внутри async IIFE ПОСЛЕ
+//   await validateLaunchParams() — тоже на t=5s, если P9-фетч к Cloudflare
+//   уходит в таймаут (5s AbortController). Оба события выстреливают в один
+//   момент, но setInterval зарегистрирован раньше → saveGame ПЕРВЫМ пишет
+//   дефолтное (FTUE) состояние в localStorage. Затем loadGame читает уже
+//   перезаписанный localStorage. Затем облачный арбитраж видит localTick =
+//   t5s > remoteTick и стирает облако дефолтом. Прогресс потерян.
+//
+// Особенно жёстко на мобильных в РФ — Cloudflare Workers замедляются/блокируются,
+// P9 всегда висит до таймаута 5s, гонка всегда проигрывается. На десктопе с
+// тёплым DNS fetch завершается за 200-400ms, loadGame успевает первым.
+//
+// Фикс: saveGame() становится no-op, пока loadGame() не завершится.
+// Флаг ставится в true в самом конце loadGame, до checkDailyReset/checkWeekly*.
+let gStateLoaded = false;
 
 // Защита от манипуляции системными часами.
 // Идея: клиент помнит максимальный wall-clock timestamp, который он видел в этой вселенной сейва.
@@ -1412,6 +1437,13 @@ function loadGame() {
     }
     // MAJOR-M2: актуализируем guard ДО дневных проверок (может заморозить сбросы при откате часов)
     applyClockRollbackGuard();
+
+    // FIX-SAVE-RACE: снимаем гвардию ПОСЛЕ чтения localStorage и applyClockRollbackGuard,
+    // но ДО checkDailyReset/checkWeekly*/checkOfflineActivity. Эти проверки могут сами
+    // вызвать saveGame() при смене суток/недели/месяца — им нужна рабочая saveGame.
+    // К этому моменту gState уже гарантированно гидратирован из localStorage (или
+    // остался дефолтным, если localStorage был пуст — что корректно).
+    gStateLoaded = true;
 
     // FIX-DEV-MODE: URL-параметр ?skipftue=1 пропускает обучение ТОЛЬКО в dev-режиме.
     // В проде (VK / GH Pages без ?debug=1) — параметр игнорируется, игрок не может
