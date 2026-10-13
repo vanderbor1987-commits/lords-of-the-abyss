@@ -184,6 +184,24 @@ let gState = {
 };
 
 // FIX-TERMS-PERSIST: синхронная гидратация флага согласия ДО preloader IIFE.
+// loadGame() запускается в async IIFE после fetch к Cloudflare (~300-800ms),
+// а preloader завершается раньше (ассеты из кэша → 50-200ms, либо watchdog на 2.2s).
+// На повторных визитах completePreloader() читал hasAcceptedTerms = false (дефолт)
+// ещё до того, как loadGame() подтянет true из localStorage — экран согласия
+// показывался каждый раз заново. Читаем ОДИН флаг синхронно — boot не блокируется.
+(function syncHydrateTermsFlag() {
+    try {
+        const raw = localStorage.getItem(SAVE_KEY);
+        if (raw) {
+            const parsed = JSON.parse(raw);
+            if (parsed && typeof parsed.hasAcceptedTerms === 'boolean') {
+                gState.hasAcceptedTerms = parsed.hasAcceptedTerms;
+            }
+        }
+    } catch(e) {}
+})();
+
+// FIX-TERMS-PERSIST: синхронная гидратация флага согласия ДО preloader IIFE.
 // Проблема: loadGame() запускается в async IIFE после fetch к Cloudflare (~300-800ms),
 // а preloader завершается раньше (ассеты из кэша → 50-200ms, либо watchdog на 2.2s).
 // На повторных визитах с warm-cache completePreloader() читал gState.hasAcceptedTerms
@@ -716,6 +734,31 @@ const PlatformBridge = {
 
             const localTick = gState.lastTickTime || 0;
             const remoteTick = remoteState.lastTickTime || 0;
+
+            // FIX-FRESH-START: если localStorage был пуст при загрузке, но в облаке
+            // лежит валидный сейв (remoteTick > 0) — накатываем его БЕЗУСЛОВНО.
+            // Без этой ветки дефолтный lastTickTime = Date.now() новее облачного,
+            // и старая логика (localTick > remoteTick → queueCloudSave) стирала
+            // реальный прогресс пользователя дефолтом.
+            if (wasLoadedFromEmptyStorage && remoteTick > 0) {
+                devLog('[Cloud Sync] Fresh start detected — forcing cloud override');
+                gState = Object.assign({}, gState, remoteState);
+                try {
+                    localStorage.setItem(SAVE_KEY, JSON.stringify(gState));
+                } catch(e) {}
+                renderFormationSlots();
+                renderCards();
+                renderQuests();
+                renderArena();
+                renderDungeon();
+                renderRaidBossUI();
+                renderLeaderboard();
+                renderBattleHistory();
+                renderFtue();
+                renderUI();
+                pushToast(currentLang === 'RU' ? 'Прогресс восстановлен из облака!' : 'Cloud save restored!');
+                return;
+            }
 
             if (remoteTick > localTick) {
                 devLog('[Cloud Sync] Накат более свежего прогресса из облака платформы');
@@ -1261,6 +1304,14 @@ function saveGame(immediateCloud = false) {
 // Блокирует дневные и недельные сбросы при откате системного времени (MAJOR-M2).
 let isClockRolledBack = false;
 
+// FIX-FRESH-START: true, если на момент loadGame() localStorage НЕ содержал сейва.
+// Критично для performSafeArbitration: дефолтный gState.lastTickTime = Date.now()
+// "свежее" любого облачного сейва, и старая логика (localTick > remoteTick →
+// queueCloudSave(true)) стирала реальный прогресс пользователя дефолтом.
+// Классический сценарий: игрок зашёл с нового устройства, очистил кэш VK WebView,
+// вышел и вошёл в VK заново.
+let wasLoadedFromEmptyStorage = false;
+
 // Защита от манипуляции системными часами.
 // Идея: клиент помнит максимальный wall-clock timestamp, который он видел в этой вселенной сейва.
 // Если Date.now() уходит ниже этого порога более чем на час — считаем это откатом часов
@@ -1291,16 +1342,26 @@ function applyClockRollbackGuard() {
 }
 
 function loadGame() {
+    // FIX-FRESH-START: захватываем пустоту ДО первого saveGame() из checkDailyReset.
+    // Если localStorage пуст — checkDailyReset ниже вызовет saveGame(), который
+    // запишет дефолтный gState в localStorage. Флаг должен быть установлен раньше.
+    let wasEmpty = true;
     try {
         const raw = localStorage.getItem(SAVE_KEY);
         if (raw) {
-            gState = Object.assign({}, gState, JSON.parse(raw));
-            if (gState.language) {
-                currentLang = gState.language;
-                try { localStorage.setItem('lords_saved_language', currentLang); } catch(e) {}
+            const parsed = JSON.parse(raw);
+            if (parsed && typeof parsed === 'object') {
+                gState = Object.assign({}, gState, parsed);
+                wasEmpty = false;
+                if (gState.language) {
+                    currentLang = gState.language;
+                    try { localStorage.setItem('lords_saved_language', currentLang); } catch(e) {}
+                }
             }
         }
     } catch(e) {}
+
+    wasLoadedFromEmptyStorage = wasEmpty;
 
     // MAJOR-M10: нормализация построений — защита от мусорных сейвов (null / удалённые id героев).
     // Гарантирует чистое состояние до первого вызова calculateCP, getFormationSynergy и renderFormationSlots.
