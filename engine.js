@@ -67,7 +67,7 @@ function devLog(...args) {
 // применился ли свежий build из GitHub во встроенном VK-браузере.
 // Формат: BUILD_VERSION — мажорная.минорная (совпадает с бампом sw.js CACHE_NAME),
 //         BUILD_DATE    — ISO-дата сборки.
-const BUILD_VERSION = '4.6';
+const BUILD_VERSION = '4.6.2';
 const BUILD_DATE = '13.10.2026';
 
 // ==========================================================
@@ -381,19 +381,18 @@ const PlatformBridge = {
         console.info('[DIAG] initVKHandshake fired, isVK=' + isRunningInsideVK() + ', hasBridge=' + !!window.vkBridge);
         if (!isRunningInsideVK() || !window.vkBridge) return;
                 try {
+            // FIX-VK-SPLASH-3: VKWebAppUpdateConfig убран из цепочки. Логи показали,
+            // что VK Bridge не резолвит промис этого метода в Games-контейнере —
+            // chain висит вечно, [LOTA] READY не логируется. Splash при этом всё
+            // равно не снимается, значит UpdateConfig НЕ является триггером снятия.
+            // Оставляем только Init. Если VK Games-контейнер ждёт доп. сигналов —
+            // это его внутренняя логика, недокументированная, и решается только
+            // через поддержку VK или автоматически после модерации.
             window.vkBridge.send('VKWebAppInit')
                 .then(data => {
                     console.info('[DIAG] VKWebAppInit resolved, result=' + (data && data.result));
-                    // FIX-VK-SPLASH-2: VK Games-контейнер ждёт от приложения
-                    // VKWebAppUpdateConfig, чтобы покрасить свой splash под цвета игры
-                    // и снять его. Отправляем ПОСЛЕ успешного Init со значениями VK-темы
-                    // (vkcom_dark), не своими — это нейтрально, просто синхронизация с VK.
-                    return window.vkBridge.send('VKWebAppUpdateConfig', {
-                        appearance: 'dark',
-                        scheme: 'vkcom_dark'
-                    }).catch(e => console.info('[DIAG] UpdateConfig skip:', e && e.message));
+                    console.info('[LOTA] READY — application initialized, waiting for VK container');
                 })
-                .then(() => console.info('[LOTA] READY — application initialized, waiting for VK container'))
                 .catch(e => console.warn('[DIAG] VK handshake FAIL', e));
 
             // FIX-VK-GAMES-SPLASH: подписка на ВСЕ события VK Bridge (диагностика).
