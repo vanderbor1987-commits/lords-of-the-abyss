@@ -67,7 +67,7 @@ function devLog(...args) {
 // применился ли свежий build из GitHub во встроенном VK-браузере.
 // Формат: BUILD_VERSION — мажорная.минорная (совпадает с бампом sw.js CACHE_NAME),
 //         BUILD_DATE    — ISO-дата сборки.
-const BUILD_VERSION = '4.6.4';
+const BUILD_VERSION = '4.6.5';
 const BUILD_DATE = '13.10.2026';
 
 // ==========================================================
@@ -732,7 +732,15 @@ const PlatformBridge = {
             const remoteState = JSON.parse(remoteJsonStr);
             if (!remoteState || typeof remoteState !== 'object') return;
 
-            const localTick = gState.lastTickTime || 0;
+            // FIX-TICKTIME-GUARD: для сравнения используем честный timestamp из localStorage,
+            // зафиксированный в loadGame ДО мутаций через checkDailyReset/checkWeekly*.
+            // gState.lastTickTime после loadGame мог быть перезаписан на Date.now() при
+            // смене суток — это ломало арбитраж и стирало облачный сейв.
+            // Fallback на gState.lastTickTime нужен для случая, когда localStorageTickTimeAtBoot
+            // не был установлен (пустой localStorage → не дошли до присвоения).
+            const localTick = localStorageTickTimeAtBoot > 0
+                ? localStorageTickTimeAtBoot
+                : (gState.lastTickTime || 0);
             const remoteTick = remoteState.lastTickTime || 0;
 
             // FIX-FRESH-START: если localStorage был пуст при загрузке, но в облаке
@@ -1312,6 +1320,22 @@ let isClockRolledBack = false;
 // вышел и вошёл в VK заново.
 let wasLoadedFromEmptyStorage = false;
 
+// FIX-TICKTIME-GUARD: честный lastTickTime из localStorage, зафиксированный
+// ДО того, как loadGame() начнёт мутировать gState через checkDailyReset,
+// checkWeeklyRaidReset, checkWeeklyArenaReset и т.п.
+//
+// ПРОБЛЕМА (обнаружена на реальном сценарии «заход на следующий день»):
+//   loadGame() ставит gState.lastTickTime = T3 (последняя игра на этом устройстве)
+//   → checkDailyReset() видит смену суток → saveGame() → gState.lastTickTime = NOW
+//   → PlatformBridge.init() → initVKCloudSync → performSafeArbitration
+//   → localTick = NOW (уже переписан!) > remoteTick = T5 (комп играл вечером)
+//   → локальный сейв телефона перезаписывает облако. Прогресс утерян.
+//
+// Фикс: захватываем честный timestamp в момент чтения localStorage (до любых
+// мутаций gState) и используем ИМЕННО ЕГО в арбитраже. gState.lastTickTime
+// после loadGame мутирован и для сравнения непригоден.
+let localStorageTickTimeAtBoot = 0;
+
 // Защита от манипуляции системными часами.
 // Идея: клиент помнит максимальный wall-clock timestamp, который он видел в этой вселенной сейва.
 // Если Date.now() уходит ниже этого порога более чем на час — считаем это откатом часов
@@ -1353,6 +1377,10 @@ function loadGame() {
             if (parsed && typeof parsed === 'object') {
                 gState = Object.assign({}, gState, parsed);
                 wasEmpty = false;
+                // FIX-TICKTIME-GUARD: честный timestamp из localStorage, ДО любых
+                // мутаций gState через checkDailyReset/checkWeekly*. Используется
+                // в performSafeArbitration вместо gState.lastTickTime.
+                localStorageTickTimeAtBoot = parsed.lastTickTime || 0;
                 if (gState.language) {
                     currentLang = gState.language;
                     try { localStorage.setItem('lords_saved_language', currentLang); } catch(e) {}
