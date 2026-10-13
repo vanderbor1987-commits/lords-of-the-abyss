@@ -67,7 +67,7 @@ function devLog(...args) {
 // применился ли свежий build из GitHub во встроенном VK-браузере.
 // Формат: BUILD_VERSION — мажорная.минорная (совпадает с бампом sw.js CACHE_NAME),
 //         BUILD_DATE    — ISO-дата сборки.
-const BUILD_VERSION = '4.6.2';
+const BUILD_VERSION = '4.6.3';
 const BUILD_DATE = '13.10.2026';
 
 // ==========================================================
@@ -369,18 +369,16 @@ const PlatformBridge = {
         } catch(e) {}
     },
 
-    // FIX-VK-INIT-SYNC: VKWebAppInit + subscribe вынесены из init() в отдельный метод.
-    // Критично: VK держит свой splash-экран, пока не получит VKWebAppInit. Раньше
-    // вызов уходил из init(), который теперь внутри async IIFE после P9-валидации —
-    // при медленном ответе Worker'а или CORS-глюке VK зависал на splash навсегда
-    // (на refresh воспроизводилось стабильно). Теперь handshake вызывается СИНХРОННО
-    // в boot-блоке до любых await. Идемпотентен через флаг _vkHandshakeDone.
         initVKHandshake() {
         if (PlatformBridge._vkHandshakeDone) return;
         PlatformBridge._vkHandshakeDone = true;
-        console.info('[DIAG] initVKHandshake fired, isVK=' + isRunningInsideVK() + ', hasBridge=' + !!window.vkBridge);
+        // FIX-CLEAN-DIAG: все DIAG-логи через devLog. В VK и на GH Pages без
+        // ?debug=1 консоль полностью чистая (п. 4.1.3 правил VK). При отладке —
+        // открыть на локалке или временно включить IS_DEV_MODE.
+        // console.warn в catch-ветках оставлен как есть — это реальные сигналы ошибок.
+        devLog('[DIAG] initVKHandshake fired, isVK=' + isRunningInsideVK() + ', hasBridge=' + !!window.vkBridge);
         if (!isRunningInsideVK() || !window.vkBridge) return;
-                try {
+        try {
             // FIX-VK-SPLASH-3: VKWebAppUpdateConfig убран из цепочки. Логи показали,
             // что VK Bridge не резолвит промис этого метода в Games-контейнере —
             // chain висит вечно, [LOTA] READY не логируется. Splash при этом всё
@@ -390,18 +388,18 @@ const PlatformBridge = {
             // через поддержку VK или автоматически после модерации.
             window.vkBridge.send('VKWebAppInit')
                 .then(data => {
-                    console.info('[DIAG] VKWebAppInit resolved, result=' + (data && data.result));
-                    console.info('[LOTA] READY — application initialized, waiting for VK container');
+                    devLog('[DIAG] VKWebAppInit resolved, result=' + (data && data.result));
+                    devLog('[LOTA] READY — application initialized, waiting for VK container');
                 })
                 .catch(e => console.warn('[DIAG] VK handshake FAIL', e));
 
             // FIX-VK-GAMES-SPLASH: подписка на ВСЕ события VK Bridge (диагностика).
             // Позволит увидеть, отправляет ли VK нам ViewRestore/UpdateConfig/GetLaunchParams,
-            // и на каком из событий VK ожидает от нас ответа. Убираем в проде после отладки.
+            // и на каком из событий VK ожидает от нас ответа.
             window.vkBridge.subscribe(event => {
                 if (!event || !event.detail) return;
                 const type = event.detail.type;
-                console.info('[DIAG] VK event:', type, event.detail.data ? JSON.stringify(event.detail.data).slice(0, 200) : '');
+                devLog('[DIAG] VK event:', type, event.detail.data ? JSON.stringify(event.detail.data).slice(0, 200) : '');
 
                 if (type === 'VKWebAppViewHide') {
                     pauseBgMusic();
@@ -11522,11 +11520,9 @@ try {
             }
         }, { once: true });
 
-        // FIX-VK-SPLASH: маркер полной инициализации UI. Показывает в VK-консоли,
-        // что весь render* отработал и прелоадер игры скрыт. Если этот лог есть,
-        // а VK-сплэш ещё висит — проблема 100% на стороне VK-контейнера,
-        // не нашего кода. Временно, уберём после отладки.
-        console.info('[LOTA] UI RENDERED — all screens initialized, ready to display');
+        // FIX-CLEAN-DIAG: маркер полной инициализации UI — под devLog.
+        // В проде молчит, при отладке виден.
+        devLog('[LOTA] UI RENDERED — all screens initialized, ready to display');
 
     })(); // FIX-P9-RACE: закрываем async IIFE ТОЛЬКО после полной инициализации UI.
           // Теперь весь render* и обработчики запускаются с уже загруженным gState —
