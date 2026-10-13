@@ -378,9 +378,13 @@ const PlatformBridge = {
     initVKHandshake() {
         if (PlatformBridge._vkHandshakeDone) return;
         PlatformBridge._vkHandshakeDone = true;
+        // DIAG-TEMP: временный диагностический лог — убрать перед модерацией!
+        console.info('[DIAG] initVKHandshake fired, isVK=' + isRunningInsideVK() + ', hasBridge=' + !!window.vkBridge);
         if (!isRunningInsideVK() || !window.vkBridge) return;
         try {
-            window.vkBridge.send('VKWebAppInit').catch(() => {});
+            window.vkBridge.send('VKWebAppInit')
+                .then(() => console.info('[DIAG] VKWebAppInit OK'))
+                .catch(e => console.warn('[DIAG] VKWebAppInit FAIL', e));
             window.vkBridge.subscribe(event => {
                 if (!event || !event.detail) return;
                 const type = event.detail.type;
