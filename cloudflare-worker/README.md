@@ -27,10 +27,24 @@ Cloudflare Worker для валидации подписи параметров 
 ## Проверка
 
 ### Ручной тест (после деплоя)
-    curl -X POST https://lota-vk-validator.<subdomain>.workers.dev/validate \
+    # Worker принимает POST на КОРНЕВОЙ URL (путь /validate не нужен —
+    # роут один, engine.js шлёт fetch без суффикса).
+
+    # Тест 1: короткий sign (7 символов) → отсекается по длине до HMAC-сравнения
+    curl -X POST https://lota-vk-validator.<subdomain>.workers.dev \
       -H "Content-Type: application/json" \
       -d '{"query":"vk_user_id=123&vk_ts=1700000000&sign=INVALID"}'
+    # Ожидается: {"valid":false,"reason":"sign_length_mismatch"}
+
+    # Тест 2: sign верной длины (43 символа base64url), но неверный
+    curl -X POST https://lota-vk-validator.<subdomain>.workers.dev \
+      -H "Content-Type: application/json" \
+      -d '{"query":"vk_user_id=123&vk_ts=1700000000&sign=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"}'
     # Ожидается: {"valid":false,"reason":"sign_mismatch"}
+
+    # Тест 3: GET (не POST) → метод не разрешён
+    # (достаточно открыть URL в браузере)
+    # Ожидается: {"valid":false,"reason":"method_not_allowed"}
 
 ### Реальный тест
     Открыть игру в VK → DevTools Console → должно появиться:
