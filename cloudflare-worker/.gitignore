@@ -1,3 +1,8 @@
 node_modules/
 .wrangler/
 .dev.vars
+*.bak
+applied/
+__pycache__/
+.vscode/
+.DS_Store
